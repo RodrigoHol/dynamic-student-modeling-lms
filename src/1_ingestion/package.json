@@ -1,0 +1,14 @@
+{
+  "name": "dsm-ingestion-gateway",
+  "version": "1.0.0",
+  "description": "Gateway asíncrono para ingesta de flujos de datos educativos provenientes de LMS",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "kafkajs": "^2.2.4"
+  }
+}

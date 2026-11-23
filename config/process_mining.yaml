@@ -1,0 +1,3 @@
+algorithm: dfg
+include_boundaries: true
+min_edge_frequency: 1

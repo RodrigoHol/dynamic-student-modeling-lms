@@ -1,0 +1,23 @@
+version: "v0.1-provisional"
+grace_period_seconds: 300
+active_granularities:
+  - daily
+  - weekly
+  - monthly
+  - course
+
+windows:
+  daily:
+    type: tumbling
+    duration_seconds: 86400
+  weekly:
+    type: tumbling
+    duration_seconds: 604800
+  monthly:
+    type: tumbling
+    mode: calendar_or_30d
+    duration_seconds: 2592000
+  course:
+    type: tumbling
+    mode: full_course
+    close_on_eof: true

@@ -1,0 +1,55 @@
+version: "v0.1-provisional"
+status: "PROVISIONAL"
+default_hle: "OTRO"
+
+ignore_noise:
+  - component: "core"
+    eventname_contains: "log_report_viewed"
+  - component: "core"
+    eventname_contains: "course_user_report_viewed"
+
+rules:
+  - hle: "ACCESO_CURSO"
+    match:
+      component: "core"
+      action: "viewed"
+      target: "course"
+  - hle: "CONSULTA_RECURSO"
+    match:
+      component_in:
+        - "mod_resource"
+        - "mod_url"
+        - "mod_page"
+        - "mod_folder"
+      action: "viewed"
+  - hle: "PARTICIPACION_FORO"
+    match:
+      component: "mod_forum"
+      action_in:
+        - "created"
+        - "updated"
+        - "uploaded"
+        - "viewed"
+  - hle: "ENVIO_TAREA"
+    match:
+      component: "mod_assign"
+      action_in:
+        - "submitted"
+        - "uploaded"
+        - "created"
+  - hle: "INTENTO_CUESTIONARIO"
+    match:
+      component: "mod_quiz"
+      action_in:
+        - "started"
+        - "submitted"
+        - "reviewed"
+  - hle: "REVISION_RETROALIMENTACION"
+    match:
+      component_in:
+        - "core"
+        - "mod_assign"
+        - "gradereport_user"
+      target_in:
+        - "grade"
+        - "feedback"

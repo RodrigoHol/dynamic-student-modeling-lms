@@ -1,0 +1,9 @@
+version: "v0.1-provisional"
+status: "PROVISIONAL"
+enabled_extractors:
+  - total_events
+  - active_days
+  - hle_frequency_per_category
+  - regularity_index
+  - session_count
+  - mean_session_duration_sec

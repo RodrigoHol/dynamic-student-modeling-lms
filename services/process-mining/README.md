@@ -1,0 +1,1 @@
+Servicio C6 (Process Mining Engine sobre PM4Py): construye DFG individuales en paralelo, agrega aditivamente los DFG por clúster al recibir asignaciones y persiste los grafos en Neo4j (ADR-03, ADR-08, ADR-13).

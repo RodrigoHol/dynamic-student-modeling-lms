@@ -1,0 +1,1 @@
+Servicio C4 (Preprocessor con Quix Streams): filtra ruido, mapea Eventos de Alto Nivel (HLE) y segmenta simultáneamente el flujo en ventanas `daily`, `weekly`, `monthly` y `course` según `t` (ADR-05, ADR-07, ADR-12).

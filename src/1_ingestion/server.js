@@ -8,10 +8,8 @@ const PORT = process.env.PORT || 3000;
 // Middleware para parseo de JSON entrante
 app.use(express.json());
 
-// Definición de la ruta de ingesta (Webhook Endpoint)
 app.post('/api/v1/webhook/moodle', receiveLmsEvent);
 
-// Inicialización del servidor condicionado a la conexión del broker
 const startServer = async () => {
   await connectProducer();
   app.listen(PORT, () => {

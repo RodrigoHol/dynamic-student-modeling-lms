@@ -1,0 +1,1 @@
+Servicio C5 (Clustering Engine sobre River): ejecuta agrupamiento evolutivo incremental por granularidad con algoritmos intercambiables (`DenStream`, `DBSTREAM`) y persiste perfiles dinámicos en MongoDB (ADR-03, ADR-04, ADR-08).

@@ -1,0 +1,1 @@
+Módulo C9 (Experiment Runner): orquesta corridas reproducibles por `run_id`, ejecuta la línea base *batch* (K-Means + PM4Py global) y calcula métricas de evaluación (Silueta, ARI, Fitness, Precision y latencias; ADR-09, ADR-10).

@@ -1,0 +1,1 @@
+Librería pura de dominio analítico: preprocesamiento HLE, ventanas por tiempo de evento, extractores de características, clustering, minería de procesos y explicabilidad, sin dependencias de Kafka ni bases de datos (ADR-10).

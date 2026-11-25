@@ -1,4 +1,4 @@
-from dsm_core.features.base import FeatureExtractor
+from dsm_core.features.base import FeatureExtractor, WindowContext, group_events_into_sessions
 from dsm_core.features.extractors import (
     ActiveDaysExtractor,
     HleFrequencyPerCategoryExtractor,
@@ -6,7 +6,6 @@ from dsm_core.features.extractors import (
     RegularityIndexExtractor,
     SessionCountExtractor,
     TotalEventsExtractor,
-    group_events_into_sessions,
 )
 from dsm_core.features.registry import (
     FEATURE_EXTRACTOR_REGISTRY,
@@ -15,8 +14,8 @@ from dsm_core.features.registry import (
 )
 
 __all__ = [
-    "ActiveDaysExtractor",
     "FEATURE_EXTRACTOR_REGISTRY",
+    "ActiveDaysExtractor",
     "FeatureExtractor",
     "FeaturePipeline",
     "HleFrequencyPerCategoryExtractor",
@@ -24,6 +23,7 @@ __all__ = [
     "RegularityIndexExtractor",
     "SessionCountExtractor",
     "TotalEventsExtractor",
+    "WindowContext",
     "create_feature_extractor",
     "group_events_into_sessions",
 ]

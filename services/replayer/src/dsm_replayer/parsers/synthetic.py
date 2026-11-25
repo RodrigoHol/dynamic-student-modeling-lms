@@ -1,5 +1,3 @@
-"""Parser para datasets sintéticos en formato JSON Lines (`.jsonl`)."""
-
 from __future__ import annotations
 
 import json
@@ -7,12 +5,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from dsm_common.schemas import RawEventInput
-from dsm_replayer.parsers.base import SourceParser, ensure_file_exists
+from dsm_replayer.parsers.base import SourceParser, ensure_file_exists, iter_chronological
 
 
 class SyntheticJsonlParser(SourceParser):
-    """Lee eventos sintéticos en formato JSONL y los emite en orden cronológico por `t`."""
-
     @property
     def format_name(self) -> str:
         return "synthetic_jsonl"
@@ -26,10 +22,7 @@ class SyntheticJsonlParser(SourceParser):
                 stripped = line.strip()
                 if not stripped:
                     continue
-                payload = json.loads(stripped)
-                event = RawEventInput.model_validate(payload)
+                event = RawEventInput.model_validate(json.loads(stripped))
                 parsed_rows.append((idx, event))
 
-        parsed_rows.sort(key=lambda item: (item[1].timestamp, item[0]))
-        for _, event in parsed_rows:
-            yield event
+        yield from iter_chronological(parsed_rows)

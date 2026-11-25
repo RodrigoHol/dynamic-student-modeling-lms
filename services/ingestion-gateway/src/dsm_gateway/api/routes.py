@@ -1,6 +1,3 @@
-"""Rutas HTTP del Ingestion Gateway (C2)."""
-
-from datetime import UTC, datetime
 from time import perf_counter
 from typing import Annotated, Any
 from uuid import uuid4
@@ -9,84 +6,73 @@ from fastapi import APIRouter, Body, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from dsm_common.config import AppSettings
-from dsm_common.messaging import EventProducer, Topics
-from dsm_common.observability import (
-    EVENTS_RECEIVED_TOTAL,
-    INGESTION_LATENCY_SECONDS,
-    render_metrics,
-)
+from dsm_common.messaging import EventProducer, PublishedMessage, Topics
+from dsm_common.observability import render_metrics
 from dsm_common.privacy import pseudonymize_user_id
 from dsm_common.schemas import CanonicalEvent, DlqEvent, RunEofEvent, RunEofRequest
+from dsm_common.time import utc_now
+from dsm_gateway.metrics import EVENTS_RECEIVED_TOTAL, INGESTION_LATENCY_SECONDS
 from dsm_gateway.normalizer import normalize_or_dlq
 
 router = APIRouter()
 
 
-async def _ingest_single(
-    payload: Any,
-    producer: EventProducer,
-    settings: AppSettings,
-) -> tuple[CanonicalEvent | None, DlqEvent | None]:
-    start = perf_counter()
-    canonical, dlq = normalize_or_dlq(payload, settings)
-    if canonical is not None:
-        await producer.publish(
-            Topics.CANONICAL_EVENTS,
-            key=canonical.u,
-            value=canonical.model_dump(mode="json"),
+def _to_published_message(outcome: CanonicalEvent | DlqEvent) -> PublishedMessage:
+    if isinstance(outcome, CanonicalEvent):
+        return PublishedMessage(
+            topic=Topics.CANONICAL_EVENTS,
+            key=outcome.u,
+            value=outcome.model_dump(mode="json"),
         )
-        EVENTS_RECEIVED_TOTAL.labels(status="accepted").inc()
-    else:
-        assert dlq is not None
-        await producer.publish(
-            Topics.DLQ_EVENTS,
-            key=dlq.dlq_id,
-            value=dlq.model_dump(mode="json"),
-        )
-        EVENTS_RECEIVED_TOTAL.labels(status="dlq").inc()
-    INGESTION_LATENCY_SECONDS.observe(perf_counter() - start)
-    return canonical, dlq
+    return PublishedMessage(
+        topic=Topics.DLQ_EVENTS,
+        key=outcome.dlq_id,
+        value=outcome.model_dump(mode="json"),
+    )
 
 
 @router.get("/health")
 async def health() -> dict[str, str]:
-    """Verifica disponibilidad del servicio."""
     return {"status": "ok", "service": "ingestion-gateway"}
 
 
 @router.get("/metrics")
 async def metrics() -> Response:
-    """Expone métricas Prometheus del servicio."""
     data, content_type = render_metrics()
     return Response(content=data, media_type=content_type)
 
 
 @router.post("/api/v1/events", status_code=202)
 async def ingest_event(request: Request, payload: Annotated[Any, Body()]) -> JSONResponse:
-    """Recibe un evento individual, lo normaliza y lo publica en Kafka."""
     producer: EventProducer = request.app.state.producer
     settings: AppSettings = request.app.state.settings
-    canonical, dlq = await _ingest_single(payload, producer, settings)
 
-    if canonical is not None:
+    started = perf_counter()
+    outcome = normalize_or_dlq(payload, settings)
+    message = _to_published_message(outcome)
+    await producer.publish(message.topic, key=message.key, value=message.value)
+    INGESTION_LATENCY_SECONDS.observe(perf_counter() - started)
+
+    if isinstance(outcome, CanonicalEvent):
+        EVENTS_RECEIVED_TOTAL.labels(status="accepted").inc()
         return JSONResponse(
             status_code=202,
             content={
                 "status": "accepted",
-                "event_id": canonical.event_id,
-                "run_id": canonical.run_id,
-                "u": canonical.u,
-                "ingested_at": canonical.ingested_at.isoformat(),
+                "event_id": outcome.event_id,
+                "run_id": outcome.run_id,
+                "u": outcome.u,
+                "ingested_at": outcome.ingested_at.isoformat(),
             },
         )
 
-    assert dlq is not None
+    EVENTS_RECEIVED_TOTAL.labels(status="dlq").inc()
     return JSONResponse(
         status_code=422,
         content={
             "status": "dlq",
-            "dlq_id": dlq.dlq_id,
-            "error_reason": dlq.error_reason,
+            "dlq_id": outcome.dlq_id,
+            "error_reason": outcome.error_reason,
         },
     )
 
@@ -96,33 +82,52 @@ async def ingest_events_batch(
     request: Request,
     payload: Annotated[Any, Body()],
 ) -> JSONResponse:
-    """Recibe un lote de eventos (p. ej. desde C3 Replayer) y enruta válidos o a DLQ."""
     producer: EventProducer = request.app.state.producer
     settings: AppSettings = request.app.state.settings
 
     items: Any = payload.get("events") if isinstance(payload, dict) else payload
     if not isinstance(items, list):
-        _, dlq = await _ingest_single(payload, producer, settings)
-        assert dlq is not None
+        outcome = normalize_or_dlq(
+            payload, settings
+        ) if not isinstance(payload, dict) else None
+        if isinstance(outcome, DlqEvent):
+            dlq = outcome
+        else:
+            dlq = DlqEvent(
+                dlq_id=str(uuid4()),
+                received_at=utc_now(),
+                error_reason=(
+                    "El lote debe ser una lista JSON o un objeto con la clave 'events'."
+                ),
+                raw_payload=payload,
+            )
+        await producer.publish(
+            Topics.DLQ_EVENTS,
+            key=dlq.dlq_id,
+            value=dlq.model_dump(mode="json"),
+        )
+        EVENTS_RECEIVED_TOTAL.labels(status="dlq").inc()
         return JSONResponse(
             status_code=422,
             content={
                 "status": "dlq",
                 "dlq_id": dlq.dlq_id,
-                "error_reason": (
-                    "El lote debe ser una lista JSON o un objeto con la clave 'events'."
-                ),
+                "error_reason": dlq.error_reason,
             },
         )
 
-    accepted = 0
-    dlq_ids: list[str] = []
-    for item in items:
-        canonical, dlq = await _ingest_single(item, producer, settings)
-        if canonical is not None:
-            accepted += 1
-        elif dlq is not None:
-            dlq_ids.append(dlq.dlq_id)
+    started = perf_counter()
+    outcomes = [normalize_or_dlq(item, settings) for item in items]
+    messages = [_to_published_message(outcome) for outcome in outcomes]
+    await producer.publish_batch(messages)
+    INGESTION_LATENCY_SECONDS.observe(perf_counter() - started)
+
+    dlq_ids = [out.dlq_id for out in outcomes if isinstance(out, DlqEvent)]
+    accepted = len(outcomes) - len(dlq_ids)
+    if accepted:
+        EVENTS_RECEIVED_TOTAL.labels(status="accepted").inc(accepted)
+    if dlq_ids:
+        EVENTS_RECEIVED_TOTAL.labels(status="dlq").inc(len(dlq_ids))
 
     return JSONResponse(
         status_code=202,
@@ -142,7 +147,7 @@ async def publish_run_eof(
     request: Request,
     payload: RunEofRequest,
 ) -> JSONResponse:
-    """Emite marcadores de fin de corrida (`RunEofEvent`) en Kafka por cada estudiante."""
+    """Emite marcadores en-banda `RunEofEvent` particionados por `u` para cada estudiante."""
     clean_run_id = run_id.strip()
     if not clean_run_id:
         raise HTTPException(status_code=422, detail="El parámetro run_id no puede estar vacío.")
@@ -153,7 +158,8 @@ async def publish_run_eof(
     unique_raw_ids = sorted(
         {uid.strip() for uid in payload.raw_user_ids if uid and uid.strip()}
     )
-    now = datetime.now(UTC)
+    now = utc_now()
+    messages: list[PublishedMessage] = []
 
     for raw_uid in unique_raw_ids:
         pseudo_u = pseudonymize_user_id(raw_uid, settings.pseudonym_salt)
@@ -164,12 +170,15 @@ async def publish_run_eof(
             course_id=payload.course_id,
             emitted_at=now,
         )
-        await producer.publish(
-            Topics.CANONICAL_EVENTS,
-            key=pseudo_u,
-            value=eof_event.model_dump(mode="json"),
+        messages.append(
+            PublishedMessage(
+                topic=Topics.CANONICAL_EVENTS,
+                key=pseudo_u,
+                value=eof_event.model_dump(mode="json"),
+            )
         )
 
+    await producer.publish_batch(messages)
     return JSONResponse(
         status_code=202,
         content={

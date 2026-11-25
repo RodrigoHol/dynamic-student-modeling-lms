@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Servicio C3: Replayer de históricos reales de Moodle y generador sintético"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "dsm-common",
+    "dsm-common[postgres]",
     "httpx>=0.27.0",
     "click>=8.1.0",
 ]

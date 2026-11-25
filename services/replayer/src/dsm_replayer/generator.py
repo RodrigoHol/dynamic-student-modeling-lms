@@ -1,5 +1,3 @@
-"""Generador determinista de logs sintéticos realistas compatibles con Moodle."""
-
 from __future__ import annotations
 
 import csv
@@ -12,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from dsm_common.schemas import EventMetadata, RawEventInput, ResourceInfo
+from dsm_common.time import ensure_utc
 
 _ARCHETYPE_WEIGHTS: tuple[tuple[str, float], ...] = (
     ("consistent_active", 0.25),
@@ -24,8 +23,6 @@ _ARCHETYPE_WEIGHTS: tuple[tuple[str, float], ...] = (
 
 @dataclass(slots=True)
 class SyntheticCourseConfig:
-    """Parámetros de generación de un curso sintético compatible con Moodle."""
-
     num_students: int = 50
     num_weeks: int = 8
     seed: int = 42
@@ -184,6 +181,38 @@ _ARCHETYPE_SEQUENCES: dict[str, list[list[str]]] = {
     ],
 }
 
+_MOODLE_CSV_FIELDS = (
+    "Hora",
+    "Nombre completo del usuario",
+    "Usuario afectado",
+    "Contexto del evento",
+    "Componente",
+    "Nombre del evento",
+    "Descripción",
+    "Origen",
+    "Dirección IP",
+)
+
+_MOODLE_DB_FIELDS = (
+    "id",
+    "eventname",
+    "component",
+    "action",
+    "target",
+    "objecttable",
+    "objectid",
+    "crud",
+    "edulevel",
+    "contextinstanceid",
+    "userid",
+    "courseid",
+    "relateduserid",
+    "timecreated",
+    "origin",
+)
+
+_CRUD_MAP = {"created": "c", "viewed": "r", "updated": "u", "submitted": "u"}
+
 
 def _assign_archetypes(num_students: int, rng: random.Random) -> list[str]:
     archetypes: list[str] = []
@@ -207,7 +236,6 @@ def _weekly_sessions_for_archetype(
     total_weeks: int,
     rng: random.Random,
 ) -> tuple[int, bool]:
-    """Devuelve `(num_sesiones, prefer_late_week)` según arquetipo y semana."""
     midpoint = max(1, total_weeks // 2)
     if archetype == "consistent_active":
         return rng.randint(4, 6), False
@@ -216,13 +244,8 @@ def _weekly_sessions_for_archetype(
     if archetype == "passive_reader":
         return rng.randint(2, 4), False
     if archetype == "at_risk_declining":
-        if week_idx < midpoint:
-            return rng.randint(3, 5), False
-        return rng.randint(0, 1), False
-    # improving
-    if week_idx < midpoint:
-        return rng.randint(1, 2), False
-    return rng.randint(4, 6), False
+        return (rng.randint(3, 5) if week_idx < midpoint else rng.randint(0, 1)), False
+    return (rng.randint(1, 2) if week_idx < midpoint else rng.randint(4, 6)), False
 
 
 def _choose_sequence(
@@ -233,9 +256,7 @@ def _choose_sequence(
 ) -> list[str]:
     midpoint = max(1, total_weeks // 2)
     options = _ARCHETYPE_SEQUENCES[archetype]
-    if archetype == "at_risk_declining":
-        return options[0] if week_idx < midpoint else options[1]
-    if archetype == "improving":
+    if archetype in {"at_risk_declining", "improving"}:
         return options[0] if week_idx < midpoint else options[1]
     return rng.choice(options)
 
@@ -255,9 +276,12 @@ def _build_session_events(
 ) -> list[RawEventInput]:
     day_offset = rng.randint(4, 6) if prefer_late_week else rng.randint(0, 6)
     hour = rng.randint(17, 23) if prefer_late_week else rng.randint(8, 22)
-    minute = rng.randint(0, 59)
-    second = rng.randint(0, 59)
-    current_ts = week_start + timedelta(days=day_offset, hours=hour, minutes=minute, seconds=second)
+    current_ts = week_start + timedelta(
+        days=day_offset,
+        hours=hour,
+        minutes=rng.randint(0, 59),
+        seconds=rng.randint(0, 59),
+    )
 
     session_seed = f"{course_id}:{student_id}:{week_idx}:{session_counter}"
     session_hash = f"sess_{hashlib.sha1(session_seed.encode('utf-8')).hexdigest()[:8]}"
@@ -304,7 +328,6 @@ def _build_session_events(
 
 
 def generate_synthetic_events(config: SyntheticCourseConfig) -> list[RawEventInput]:
-    """Genera una lista cronológica determinista de eventos sintéticos estilo Moodle."""
     if config.num_students < 1:
         raise ValueError("num_students debe ser >= 1.")
     if config.num_weeks < 1:
@@ -313,11 +336,7 @@ def generate_synthetic_events(config: SyntheticCourseConfig) -> list[RawEventInp
         raise ValueError("target_events debe ser >= 1.")
 
     rng = random.Random(config.seed)
-    start_utc = (
-        config.start_date.replace(tzinfo=UTC)
-        if config.start_date.tzinfo is None
-        else config.start_date.astimezone(UTC)
-    )
+    start_utc = ensure_utc(config.start_date)
     archetypes = _assign_archetypes(config.num_students, rng)
     student_ids = [f"alu_{idx + 1:03d}" for idx in range(config.num_students)]
 
@@ -372,8 +391,7 @@ def generate_synthetic_events(config: SyntheticCourseConfig) -> list[RawEventInp
     if config.target_events is not None and len(events) > config.target_events:
         total = len(events)
         target = config.target_events
-        selected_indices = [(i * total) // target for i in range(target)]
-        events = [events[i] for i in selected_indices]
+        events = [events[(i * total) // target] for i in range(target)]
 
     return events
 
@@ -404,104 +422,86 @@ def _moodle_csv_event_label(event: RawEventInput) -> str:
     return f"Módulo de curso {event.action}"
 
 
+def _write_jsonl(events: list[RawEventInput], path: Path) -> int:
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        for event in events:
+            handle.write(json.dumps(event.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    return len(events)
+
+
+def _write_moodle_csv(events: list[RawEventInput], path: Path) -> int:
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_MOODLE_CSV_FIELDS)
+        writer.writeheader()
+        for idx, event in enumerate(events, start=1):
+            course_num = _extract_numeric_suffix(event.metadata.course_id, 105)
+            res_num = _extract_numeric_suffix(event.resource.resource_id, idx)
+            writer.writerow(
+                {
+                    "Hora": event.timestamp.astimezone(UTC).strftime("%d/%m/%Y, %H:%M:%S"),
+                    "Nombre completo del usuario": event.raw_user_id,
+                    "Usuario afectado": "-",
+                    "Contexto del evento": event.resource.name or event.resource.resource_id,
+                    "Componente": event.metadata.component or "core",
+                    "Nombre del evento": _moodle_csv_event_label(event),
+                    "Descripción": (
+                        f"El usuario con id '{event.raw_user_id}' realizó '{event.action}' "
+                        f"en el módulo del curso id '{res_num}' "
+                        f"del curso con id '{course_num}'."
+                    ),
+                    "Origen": "web",
+                    "Dirección IP": "127.0.0.1",
+                }
+            )
+    return len(events)
+
+
+def _write_moodle_db(events: list[RawEventInput], path: Path) -> int:
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_MOODLE_DB_FIELDS)
+        writer.writeheader()
+        for idx, event in enumerate(events, start=1):
+            extra: dict[str, Any] = event.metadata.model_extra or {}
+            course_num = _extract_numeric_suffix(event.metadata.course_id, 105)
+            res_num = _extract_numeric_suffix(event.resource.resource_id, idx)
+            writer.writerow(
+                {
+                    "id": idx,
+                    "eventname": event.metadata.raw_eventname
+                    or f"\\{event.metadata.component or 'core'}\\event\\{event.action}",
+                    "component": event.metadata.component or "core",
+                    "action": event.action,
+                    "target": extra.get("target") or event.resource.resource_type,
+                    "objecttable": event.resource.resource_type,
+                    "objectid": res_num,
+                    "crud": _CRUD_MAP.get(event.action, "r"),
+                    "edulevel": 2,
+                    "contextinstanceid": res_num,
+                    "userid": event.raw_user_id,
+                    "courseid": course_num,
+                    "relateduserid": "",
+                    "timecreated": int(event.timestamp.timestamp()),
+                    "origin": "web",
+                }
+            )
+    return len(events)
+
+
+_WRITERS = {
+    "synthetic_jsonl": _write_jsonl,
+    "moodle_csv": _write_moodle_csv,
+    "moodle_db": _write_moodle_db,
+}
+
+
 def write_synthetic_dataset(
     events: list[RawEventInput],
     output_path: str | Path,
     fmt: str = "synthetic_jsonl",
 ) -> int:
-    """Serializa una lista de eventos sintéticos en el formato indicado."""
+    writer = _WRITERS.get(fmt)
+    if writer is None:
+        raise ValueError(f"Formato de exportación no soportado: '{fmt}'.")
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    if fmt == "synthetic_jsonl":
-        with path.open("w", encoding="utf-8", newline="\n") as handle:
-            for event in events:
-                handle.write(json.dumps(event.model_dump(mode="json"), ensure_ascii=False) + "\n")
-        return len(events)
-
-    if fmt == "moodle_csv":
-        fieldnames = [
-            "Hora",
-            "Nombre completo del usuario",
-            "Usuario afectado",
-            "Contexto del evento",
-            "Componente",
-            "Nombre del evento",
-            "Descripción",
-            "Origen",
-            "Dirección IP",
-        ]
-        with path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames)
-            writer.writeheader()
-            for idx, event in enumerate(events, start=1):
-                course_num = _extract_numeric_suffix(event.metadata.course_id, 105)
-                res_num = _extract_numeric_suffix(event.resource.resource_id, idx)
-                writer.writerow(
-                    {
-                        "Hora": event.timestamp.astimezone(UTC).strftime("%d/%m/%Y, %H:%M:%S"),
-                        "Nombre completo del usuario": event.raw_user_id,
-                        "Usuario afectado": "-",
-                        "Contexto del evento": event.resource.name or event.resource.resource_id,
-                        "Componente": event.metadata.component or "core",
-                        "Nombre del evento": _moodle_csv_event_label(event),
-                        "Descripción": (
-                            f"El usuario con id '{event.raw_user_id}' realizó '{event.action}' "
-                            f"en el módulo del curso id '{res_num}' "
-                            f"del curso con id '{course_num}'."
-                        ),
-                        "Origen": "web",
-                        "Dirección IP": "127.0.0.1",
-                    }
-                )
-        return len(events)
-
-    if fmt == "moodle_db":
-        fieldnames = [
-            "id",
-            "eventname",
-            "component",
-            "action",
-            "target",
-            "objecttable",
-            "objectid",
-            "crud",
-            "edulevel",
-            "contextinstanceid",
-            "userid",
-            "courseid",
-            "relateduserid",
-            "timecreated",
-            "origin",
-        ]
-        crud_map = {"created": "c", "viewed": "r", "updated": "u", "submitted": "u"}
-        with path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames)
-            writer.writeheader()
-            for idx, event in enumerate(events, start=1):
-                extra: dict[str, Any] = event.metadata.model_extra or {}
-                course_num = _extract_numeric_suffix(event.metadata.course_id, 105)
-                res_num = _extract_numeric_suffix(event.resource.resource_id, idx)
-                writer.writerow(
-                    {
-                        "id": idx,
-                        "eventname": event.metadata.raw_eventname
-                        or f"\\{event.metadata.component or 'core'}\\event\\{event.action}",
-                        "component": event.metadata.component or "core",
-                        "action": event.action,
-                        "target": extra.get("target") or event.resource.resource_type,
-                        "objecttable": event.resource.resource_type,
-                        "objectid": res_num,
-                        "crud": crud_map.get(event.action, "r"),
-                        "edulevel": 2,
-                        "contextinstanceid": res_num,
-                        "userid": event.raw_user_id,
-                        "courseid": course_num,
-                        "relateduserid": "",
-                        "timecreated": int(event.timestamp.timestamp()),
-                        "origin": "web",
-                    }
-                )
-        return len(events)
-
-    raise ValueError(f"Formato de exportación no soportado: '{fmt}'.")
+    return writer(events, path)

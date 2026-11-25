@@ -1,5 +1,3 @@
-"""Registro declarativo y autodetección de formatos de `SourceParser`."""
-
 from __future__ import annotations
 
 import csv
@@ -19,7 +17,6 @@ PARSER_REGISTRY: dict[str, type[SourceParser]] = {
 
 
 def detect_format(file_path: str | Path) -> str:
-    """Detecta el formato del dataset inspeccionando extensión, encabezados o primer registro."""
     path = ensure_file_exists(file_path)
     suffix = path.suffix.lower()
 
@@ -40,8 +37,7 @@ def detect_format(file_path: str | Path) -> str:
 
     if suffix == ".csv":
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.reader(handle)
-            headers = next(reader, [])
+            headers = next(csv.reader(handle), [])
             lowered = {h.strip().lower() for h in headers}
             if {"timecreated", "userid", "eventname"}.issubset(lowered) or "timecreated" in lowered:
                 return "moodle_db"
@@ -53,7 +49,6 @@ def detect_format(file_path: str | Path) -> str:
 
 
 def create_parser(fmt: str, *, course_id: str | None = None) -> SourceParser:
-    """Instancia el parser registrado para `fmt`."""
     if fmt not in PARSER_REGISTRY:
         supported = ", ".join(sorted(PARSER_REGISTRY))
         raise ValueError(f"Formato no soportado '{fmt}'. Opciones válidas: {supported}")

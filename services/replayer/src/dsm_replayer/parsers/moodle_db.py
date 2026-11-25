@@ -1,5 +1,3 @@
-"""Parser para volcados directos de la tabla `mdl_logstore_standard_log` de Moodle."""
-
 from __future__ import annotations
 
 import csv
@@ -9,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from dsm_common.schemas import EventMetadata, RawEventInput, ResourceInfo
-from dsm_replayer.parsers.base import SourceParser, ensure_file_exists, parse_datetime_utc
+from dsm_replayer.parsers.base import (
+    SourceParser,
+    ensure_file_exists,
+    iter_chronological,
+    parse_datetime_utc,
+)
 
 
 def _normalize_course_id(raw_course_id: Any, default_course_id: str) -> str:
@@ -90,8 +93,6 @@ def _build_event_from_db_row(
 
 
 class MoodleDbLogParser(SourceParser):
-    """Parser para volcados CSV o JSONL de la tabla `mdl_logstore_standard_log`."""
-
     def __init__(self, default_course_id: str = "course_unknown") -> None:
         self._default_course_id = default_course_id
 
@@ -138,6 +139,4 @@ class MoodleDbLogParser(SourceParser):
                         )
                     )
 
-        parsed_rows.sort(key=lambda item: (item[1].timestamp, item[0]))
-        for _, event in parsed_rows:
-            yield event
+        yield from iter_chronological(parsed_rows)

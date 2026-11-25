@@ -1,11 +1,9 @@
-"""Nombres canónicos de topics de Apache Kafka."""
+from typing import Final
 
 
 class Topics:
-    """Constantes de topics utilizados en la arquitectura Kappa."""
-
-    CANONICAL_EVENTS = "lms.events.canonical"
-    DLQ_EVENTS = "lms.events.dlq"
-    FEATURES = "analytics.features"
-    TRACES = "analytics.traces"
-    ASSIGNMENTS = "analytics.assignments"
+    CANONICAL_EVENTS: Final[str] = "lms.events.canonical"
+    DLQ_EVENTS: Final[str] = "lms.events.dlq"
+    FEATURES: Final[str] = "analytics.features"
+    TRACES: Final[str] = "analytics.traces"
+    ASSIGNMENTS: Final[str] = "analytics.assignments"

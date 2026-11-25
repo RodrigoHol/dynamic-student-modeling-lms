@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from dsm_common.config import load_hle_catalog
+import pytest
+
+from dsm_common.config import HleCatalogConfig, HleNoiseRule, HleRule, load_hle_catalog
 from dsm_common.schemas import CanonicalEvent, EventMetadata, ResourceInfo
 from dsm_core.preprocessing import HLEMapper, NoiseFilter
 
@@ -156,3 +158,21 @@ def test_hle_mapper_covers_all_catalog_rules_and_default() -> None:
     for event, expected_hle in cases:
         enriched = mapper.enrich_event(event)
         assert enriched.M.hle == expected_hle
+
+
+def test_preprocessing_fails_fast_on_invalid_rule_criteria() -> None:
+    bad_hle_catalog = HleCatalogConfig(
+        version="v-bad",
+        rules=[HleRule(hle="X", match={"unsupported_field": "abc"})],
+    )
+    with pytest.raises(ValueError, match="no soportado"):
+        HLEMapper(bad_hle_catalog)
+
+    bad_noise_catalog = HleCatalogConfig(
+        version="v-bad",
+        ignore_noise=[HleNoiseRule(component_in="not_a_list")],
+        rules=[HleRule(hle="X", match={"component": "core"})],
+    )
+    with pytest.raises(ValueError, match="lista de valores"):
+        NoiseFilter(bad_noise_catalog)
+

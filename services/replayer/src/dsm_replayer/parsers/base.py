@@ -1,5 +1,3 @@
-"""Contrato base y utilidades compartidas para parsers de históricos LMS."""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -8,10 +6,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from dsm_common.schemas import RawEventInput
+from dsm_common.time import ensure_utc
 
 
 def ensure_file_exists(file_path: str | Path) -> Path:
-    """Valida que el archivo de entrada exista y sea un fichero regular."""
     path = Path(file_path)
     if not path.is_file():
         raise FileNotFoundError(f"Archivo de eventos no encontrado: {path}")
@@ -19,7 +17,6 @@ def ensure_file_exists(file_path: str | Path) -> Path:
 
 
 def parse_datetime_utc(raw_value: str | int | float, formats: tuple[str, ...] = ()) -> datetime:
-    """Convierte una estampa ISO-8601, epoch o cadena formateada a `datetime` UTC."""
     if isinstance(raw_value, (int, float)):
         return datetime.fromtimestamp(float(raw_value), tz=UTC)
 
@@ -30,34 +27,30 @@ def parse_datetime_utc(raw_value: str | int | float, formats: tuple[str, ...] = 
     if text.isdigit():
         return datetime.fromtimestamp(float(text), tz=UTC)
     try:
-        numeric = float(text)
+        return datetime.fromtimestamp(float(text), tz=UTC)
     except ValueError:
-        numeric = None
-    if numeric is not None:
-        return datetime.fromtimestamp(numeric, tz=UTC)
+        pass
 
     for fmt in formats:
         try:
-            parsed = datetime.strptime(text, fmt)
-            return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+            return ensure_utc(datetime.strptime(text, fmt))
         except ValueError:
             continue
 
     normalized = text.replace("Z", "+00:00") if text.endswith("Z") else text
-    parsed_iso = datetime.fromisoformat(normalized)
-    if parsed_iso.tzinfo is None:
-        return parsed_iso.replace(tzinfo=UTC)
-    return parsed_iso.astimezone(UTC)
+    return ensure_utc(datetime.fromisoformat(normalized))
+
+
+def iter_chronological(indexed_rows: list[tuple[int, RawEventInput]]) -> Iterator[RawEventInput]:
+    indexed_rows.sort(key=lambda item: (item[1].timestamp, item[0]))
+    for _, event in indexed_rows:
+        yield event
 
 
 class SourceParser(ABC):
-    """Adapta distintos formatos de exportación histórica hacia el payload del Gateway."""
-
     @property
     @abstractmethod
-    def format_name(self) -> str:
-        """Identificador canónico del formato de entrada."""
+    def format_name(self) -> str: ...
 
     @abstractmethod
-    def parse_stream(self, file_path: str | Path) -> Iterator[RawEventInput]:
-        """Genera eventos ordenados cronológicamente por `t` original en UTC."""
+    def parse_stream(self, file_path: str | Path) -> Iterator[RawEventInput]: ...

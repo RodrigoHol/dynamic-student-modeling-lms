@@ -1,15 +1,11 @@
-"""Esquemas Pydantic de salida analítica emitidos por C4 Preprocessor."""
-
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from dsm_common.schemas.events import _ensure_utc
+from dsm_common.time import ensure_utc
 
 
 class TraceEventItem(BaseModel):
-    """Elemento individual dentro de la traza secuencial ordenada de HLE."""
-
     event_id: str = Field(..., min_length=1)
     hle: str = Field(..., min_length=1)
     t: datetime
@@ -21,12 +17,10 @@ class TraceEventItem(BaseModel):
     @field_validator("t")
     @classmethod
     def _normalize_t(cls, value: datetime) -> datetime:
-        return _ensure_utc(value)
+        return ensure_utc(value)
 
 
 class FeatureVectorMessage(BaseModel):
-    """Vector numérico de características emitido hacia `analytics.features`."""
-
     run_id: str = Field(..., min_length=1)
     course_id: str = Field(..., min_length=1)
     u: str = Field(..., min_length=1)
@@ -44,12 +38,10 @@ class FeatureVectorMessage(BaseModel):
     @field_validator("window_start", "window_end", "last_event_ingested_at", "emitted_at")
     @classmethod
     def _normalize_datetimes(cls, value: datetime) -> datetime:
-        return _ensure_utc(value)
+        return ensure_utc(value)
 
 
 class TraceMessage(BaseModel):
-    """Traza secuencial ordenada de HLE emitida hacia `analytics.traces`."""
-
     run_id: str = Field(..., min_length=1)
     course_id: str = Field(..., min_length=1)
     u: str = Field(..., min_length=1)
@@ -66,4 +58,4 @@ class TraceMessage(BaseModel):
     @field_validator("window_start", "window_end", "last_event_ingested_at", "emitted_at")
     @classmethod
     def _normalize_datetimes(cls, value: datetime) -> datetime:
-        return _ensure_utc(value)
+        return ensure_utc(value)

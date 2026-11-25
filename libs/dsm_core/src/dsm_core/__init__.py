@@ -1,5 +1,3 @@
-"""Dominio analítico puro para Dynamic Student Modeling LMS (ADR-10)."""
-
 from dsm_core.features import (
     FEATURE_EXTRACTOR_REGISTRY,
     ActiveDaysExtractor,
@@ -10,10 +8,12 @@ from dsm_core.features import (
     RegularityIndexExtractor,
     SessionCountExtractor,
     TotalEventsExtractor,
+    WindowContext,
     create_feature_extractor,
     group_events_into_sessions,
 )
 from dsm_core.pipeline import (
+    EventStatus,
     PreprocessingEngine,
     ProcessEventResult,
     build_window_outputs,
@@ -22,6 +22,7 @@ from dsm_core.pipeline import (
 from dsm_core.preprocessing import HLEMapper, NoiseFilter, extract_match_context, rule_matches
 from dsm_core.windowing import (
     ClosedWindow,
+    KeyValueState,
     MultiGranularityWindowManager,
     WindowAssignmentOutcome,
     WindowSpec,
@@ -31,13 +32,15 @@ from dsm_core.windowing import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "FEATURE_EXTRACTOR_REGISTRY",
     "ActiveDaysExtractor",
     "ClosedWindow",
-    "FEATURE_EXTRACTOR_REGISTRY",
+    "EventStatus",
     "FeatureExtractor",
     "FeaturePipeline",
     "HLEMapper",
     "HleFrequencyPerCategoryExtractor",
+    "KeyValueState",
     "MeanSessionDurationExtractor",
     "MultiGranularityWindowManager",
     "NoiseFilter",
@@ -47,6 +50,7 @@ __all__ = [
     "SessionCountExtractor",
     "TotalEventsExtractor",
     "WindowAssignmentOutcome",
+    "WindowContext",
     "WindowSpec",
     "__version__",
     "build_window_outputs",

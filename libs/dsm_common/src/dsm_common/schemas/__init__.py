@@ -3,10 +3,12 @@ from dsm_common.schemas.events import (
     CanonicalEvent,
     DlqEvent,
     EventMetadata,
+    Granularity,
     RawEventInput,
     ResourceInfo,
     RunEofEvent,
     RunEofRequest,
+    make_dlq_event,
 )
 
 __all__ = [
@@ -14,10 +16,12 @@ __all__ = [
     "DlqEvent",
     "EventMetadata",
     "FeatureVectorMessage",
+    "Granularity",
     "RawEventInput",
     "ResourceInfo",
     "RunEofEvent",
     "RunEofRequest",
     "TraceEventItem",
     "TraceMessage",
+    "make_dlq_event",
 ]

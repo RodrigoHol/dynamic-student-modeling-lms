@@ -1,5 +1,3 @@
-"""Cálculo de límites de ventanas temporales disjuntas basadas en `t` (ADR-12)."""
-
 from __future__ import annotations
 
 import math
@@ -7,19 +5,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from dsm_common.config import WindowDefinition
-
-
-def ensure_utc(value: datetime) -> datetime:
-    """Normaliza una marca temporal a UTC."""
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
+from dsm_common.time import ensure_utc
 
 
 @dataclass(frozen=True, slots=True)
 class WindowSpec:
-    """Especificación de una ventana disjunta calculada desde `t`."""
-
     granularity: str
     window_id: str
     window_start: datetime
@@ -37,21 +27,19 @@ def compute_window_spec(
     course_start: datetime | None = None,
     course_end: datetime | None = None,
 ) -> WindowSpec:
-    """Asigna una marca temporal `t` a su ventana disjunta en la granularidad dada."""
+    """Asigna `t` (ADR-12) a su ventana disjunta en la granularidad solicitada."""
     ts = ensure_utc(t)
 
     if granularity == "daily":
         duration_sec = definition.duration_seconds or 86400
         if duration_sec == 86400:
             start = ts.replace(hour=0, minute=0, second=0, microsecond=0)
-            end = start + timedelta(days=1)
             return WindowSpec(
                 granularity=granularity,
                 window_id=start.strftime("%Y-%m-%d"),
                 window_start=start,
-                window_end=end,
+                window_end=start + timedelta(days=1),
                 close_on_eof=bool(definition.close_on_eof),
-                fixed_bounds=True,
             )
 
     if granularity == "weekly":
@@ -61,14 +49,12 @@ def compute_window_spec(
             start = (ts - timedelta(days=iso_weekday - 1)).replace(
                 hour=0, minute=0, second=0, microsecond=0
             )
-            end = start + timedelta(days=7)
             return WindowSpec(
                 granularity=granularity,
                 window_id=f"{iso_year:04d}-W{iso_week:02d}",
                 window_start=start,
-                window_end=end,
+                window_end=start + timedelta(days=7),
                 close_on_eof=bool(definition.close_on_eof),
-                fixed_bounds=True,
             )
 
     if granularity == "monthly":
@@ -81,40 +67,36 @@ def compute_window_spec(
             )
             block_idx = math.floor((ts - anchor).total_seconds() / duration_sec)
             start = anchor + timedelta(seconds=block_idx * duration_sec)
-            end = start + timedelta(seconds=duration_sec)
             return WindowSpec(
                 granularity=granularity,
                 window_id=f"M{block_idx + 1:02d}_{start.strftime('%Y-%m-%d')}",
                 window_start=start,
-                window_end=end,
+                window_end=start + timedelta(seconds=duration_sec),
                 close_on_eof=bool(definition.close_on_eof),
-                fixed_bounds=True,
             )
 
         start = ts.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if start.month == 12:
-            end = start.replace(year=start.year + 1, month=1)
-        else:
-            end = start.replace(month=start.month + 1)
+        end = (
+            start.replace(year=start.year + 1, month=1)
+            if start.month == 12
+            else start.replace(month=start.month + 1)
+        )
         return WindowSpec(
             granularity=granularity,
             window_id=f"{start.year:04d}-{start.month:02d}",
             window_start=start,
             window_end=end,
             close_on_eof=bool(definition.close_on_eof),
-            fixed_bounds=True,
         )
 
     if granularity == "course" or definition.mode == "full_course":
         close_on_eof = True if definition.close_on_eof is None else bool(definition.close_on_eof)
         has_fixed_bounds = course_start is not None and course_end is not None
-        start = ensure_utc(course_start) if course_start is not None else ts
-        end = ensure_utc(course_end) if course_end is not None else ts
         return WindowSpec(
             granularity=granularity,
             window_id=course_id,
-            window_start=start,
-            window_end=end,
+            window_start=ensure_utc(course_start) if course_start is not None else ts,
+            window_end=ensure_utc(course_end) if course_end is not None else ts,
             close_on_eof=close_on_eof,
             fixed_bounds=has_fixed_bounds,
         )
@@ -126,12 +108,10 @@ def compute_window_spec(
     epoch = datetime(1970, 1, 1, tzinfo=UTC)
     bucket_idx = math.floor((ts - epoch).total_seconds() / duration_sec)
     start = epoch + timedelta(seconds=bucket_idx * duration_sec)
-    end = start + timedelta(seconds=duration_sec)
     return WindowSpec(
         granularity=granularity,
         window_id=f"{granularity}_{start.strftime('%Y%m%dT%H%M%SZ')}",
         window_start=start,
-        window_end=end,
+        window_end=start + timedelta(seconds=duration_sec),
         close_on_eof=bool(definition.close_on_eof),
-        fixed_bounds=True,
     )

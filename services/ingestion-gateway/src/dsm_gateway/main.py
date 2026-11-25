@@ -1,5 +1,3 @@
-"""Punto de entrada de la aplicación FastAPI para C2 Ingestion Gateway."""
-
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,7 +12,6 @@ def create_app(
     producer: EventProducer | None = None,
     settings: AppSettings | None = None,
 ) -> FastAPI:
-    """Construye la aplicación FastAPI inyectando configuración y productor."""
     active_settings = settings or AppSettings()
     active_producer = producer or KafkaEventProducer(active_settings.kafka_bootstrap_servers)
 

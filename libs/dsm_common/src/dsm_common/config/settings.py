@@ -1,13 +1,9 @@
-"""Configuración operativa cargada desde variables de entorno (prefijo DSM_)."""
-
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AppSettings(BaseSettings):
-    """Ajustes globales de infraestructura y servicio."""
-
     model_config = SettingsConfigDict(
         env_prefix="DSM_",
         env_file=".env",

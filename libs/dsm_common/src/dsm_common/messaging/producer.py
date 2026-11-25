@@ -1,47 +1,46 @@
-"""Abstracciones de publicación de eventos hacia Apache Kafka."""
+from __future__ import annotations
 
+import asyncio
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from aiokafka import AIOKafkaProducer
+if TYPE_CHECKING:
+    from aiokafka import AIOKafkaProducer
 
 
 @dataclass(slots=True)
 class PublishedMessage:
-    """Mensaje registrado en el productor en memoria."""
-
     topic: str
     key: str | None
     value: dict[str, Any]
 
 
 class EventProducer(ABC):
-    """Contrato común para productores asíncronos de eventos."""
+    @abstractmethod
+    async def start(self) -> None: ...
 
     @abstractmethod
-    async def start(self) -> None:
-        """Inicializa la conexión con el broker."""
+    async def stop(self) -> None: ...
 
     @abstractmethod
-    async def stop(self) -> None:
-        """Cierra limpiamente los recursos del productor."""
+    async def publish(self, topic: str, key: str | None, value: dict[str, Any]) -> None: ...
 
     @abstractmethod
-    async def publish(self, topic: str, key: str | None, value: dict[str, Any]) -> None:
-        """Publica un evento serializable en JSON con clave de partición opcional."""
+    async def publish_batch(self, messages: Sequence[PublishedMessage]) -> None: ...
 
 
 class KafkaEventProducer(EventProducer):
-    """Productor asíncrono respaldado por Apache Kafka (aiokafka)."""
-
     def __init__(self, bootstrap_servers: str) -> None:
         self._bootstrap_servers = bootstrap_servers
         self._producer: AIOKafkaProducer | None = None
 
     async def start(self) -> None:
         if self._producer is None:
+            from aiokafka import AIOKafkaProducer
+
             self._producer = AIOKafkaProducer(
                 bootstrap_servers=self._bootstrap_servers,
                 key_serializer=lambda k: k.encode("utf-8") if k is not None else None,
@@ -60,10 +59,18 @@ class KafkaEventProducer(EventProducer):
             raise RuntimeError("KafkaEventProducer no ha sido iniciado con start().")
         await self._producer.send_and_wait(topic, key=key, value=value)
 
+    async def publish_batch(self, messages: Sequence[PublishedMessage]) -> None:
+        if not messages:
+            return
+        if self._producer is None:
+            raise RuntimeError("KafkaEventProducer no ha sido iniciado con start().")
+        futures = [
+            await self._producer.send(msg.topic, key=msg.key, value=msg.value) for msg in messages
+        ]
+        await asyncio.gather(*futures)
+
 
 class InMemoryEventProducer(EventProducer):
-    """Productor en memoria para pruebas unitarias y de integración sin broker."""
-
     def __init__(self) -> None:
         self.started: bool = False
         self.messages: list[PublishedMessage] = []
@@ -78,3 +85,8 @@ class InMemoryEventProducer(EventProducer):
         if not self.started:
             raise RuntimeError("InMemoryEventProducer no ha sido iniciado con start().")
         self.messages.append(PublishedMessage(topic=topic, key=key, value=value))
+
+    async def publish_batch(self, messages: Sequence[PublishedMessage]) -> None:
+        if not self.started:
+            raise RuntimeError("InMemoryEventProducer no ha sido iniciado con start().")
+        self.messages.extend(messages)

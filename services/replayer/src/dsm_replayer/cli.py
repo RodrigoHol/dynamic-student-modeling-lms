@@ -1,5 +1,3 @@
-"""Interfaz de línea de comandos (`dsm-replayer`) para generación y replay."""
-
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +20,6 @@ from dsm_replayer.scheduler import ReplayDispatcher, ReplayStats, parse_speed_fa
 
 
 def generate_run_id(now: datetime | None = None) -> str:
-    """Genera un identificador único trazable para una corrida (`run_YYYYMMDD_HHMMSS_xxxxxx`)."""
     ts = (now or datetime.now(UTC)).strftime("%Y%m%d_%H%M%S")
     return f"run_{ts}_{uuid4().hex[:6]}"
 
@@ -75,7 +72,7 @@ async def _execute_replay(
 
 @click.group()
 def main() -> None:
-    """CLI de C3 Replayer para generar y reproducir flujos educativos hacia C2."""
+    pass
 
 
 @main.command()
@@ -133,7 +130,6 @@ def generate(
     start_date: str,
     noise_ratio: float,
 ) -> None:
-    """Genera un dataset sintético realista compatible con Moodle."""
     config = SyntheticCourseConfig(
         num_students=students,
         num_weeks=weeks,
@@ -225,7 +221,6 @@ def replay(
     no_db: bool,
     emit_eof: bool,
 ) -> None:
-    """Reproduce cronológicamente un dataset hacia C2 Ingestion Gateway."""
     settings = AppSettings()
     resolved_fmt = fmt.lower() if fmt is not None else detect_format(dataset_path)
     resolved_run_id = run_id or generate_run_id()

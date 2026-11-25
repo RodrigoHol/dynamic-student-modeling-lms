@@ -1,5 +1,3 @@
-"""Parser para exportaciones CSV estándar desde la interfaz web de Moodle."""
-
 from __future__ import annotations
 
 import csv
@@ -9,7 +7,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from dsm_common.schemas import EventMetadata, RawEventInput, ResourceInfo
-from dsm_replayer.parsers.base import SourceParser, ensure_file_exists, parse_datetime_utc
+from dsm_replayer.parsers.base import (
+    SourceParser,
+    ensure_file_exists,
+    iter_chronological,
+    parse_datetime_utc,
+)
 
 _MOODLE_TIME_FORMATS: tuple[str, ...] = (
     "%d/%m/%y, %H:%M:%S",
@@ -103,11 +106,12 @@ def _infer_action_target(
     description: str,
     component: str,
 ) -> tuple[str, str | None, str]:
-    """Infiere `(action, target, raw_eventname)` compatible con `config/hle_catalog.yaml`."""
     lowered = f"{event_name} {description}".lower()
 
-    if "log_report_viewed" in lowered or "informe de registro" in lowered or (
-        "log report" in lowered and "viewed" in lowered
+    if (
+        "log_report_viewed" in lowered
+        or "informe de registro" in lowered
+        or ("log report" in lowered and "viewed" in lowered)
     ):
         return "viewed", "log_report", "\\core\\event\\log_report_viewed"
 
@@ -149,14 +153,76 @@ def _infer_action_target(
 
 
 class MoodleCsvExportParser(SourceParser):
-    """Parser para exportaciones CSV de bitácoras desde la interfaz web de Moodle."""
-
     def __init__(self, default_course_id: str = "course_unknown") -> None:
         self._default_course_id = default_course_id
 
     @property
     def format_name(self) -> str:
         return "moodle_csv"
+
+    def _parse_row(self, idx: int, row: dict[str | None, str | None]) -> RawEventInput | None:
+        row_lower = {
+            (k or "").strip().lower(): (v or "") for k, v in row.items() if k is not None
+        }
+        raw_time = _pick_column(row_lower, _COLUMN_ALIASES["time"])
+        if not raw_time:
+            return None
+
+        timestamp = parse_datetime_utc(raw_time, _MOODLE_TIME_FORMATS)
+        user_name = _pick_column(row_lower, _COLUMN_ALIASES["user"])
+        description = _pick_column(row_lower, _COLUMN_ALIASES["description"])
+        context = _pick_column(row_lower, _COLUMN_ALIASES["context"])
+        raw_component = _pick_column(row_lower, _COLUMN_ALIASES["component"])
+        event_name = _pick_column(row_lower, _COLUMN_ALIASES["event_name"])
+        origin = _pick_column(row_lower, _COLUMN_ALIASES["origin"])
+
+        user_match = _USER_ID_RE.search(description)
+        raw_user_id = (
+            user_match.group(1).strip()
+            if user_match
+            else (user_name if user_name and user_name != "-" else f"anon_{idx}")
+        )
+
+        component = _normalize_component(raw_component)
+        action, target, raw_eventname = _infer_action_target(
+            event_name=event_name,
+            description=description,
+            component=component,
+        )
+
+        cmid_match = _CMID_RE.search(description) or _GENERIC_ID_RE.search(description)
+        resource_type = component.removeprefix("mod_")
+        if cmid_match:
+            resource_id = f"{resource_type}_{cmid_match.group(1).strip()}"
+        else:
+            resource_id = _slugify_id(resource_type, context or event_name or str(idx))
+
+        course_match = _COURSE_ID_RE.search(description)
+        course_id = (
+            f"course_{course_match.group(1).strip()}"
+            if course_match
+            else self._default_course_id
+        )
+
+        return RawEventInput(
+            raw_user_id=raw_user_id,
+            action=action,
+            resource=ResourceInfo(
+                resource_id=resource_id,
+                resource_type=resource_type,
+                name=context or event_name or None,
+            ),
+            timestamp=timestamp,
+            metadata=EventMetadata(
+                course_id=course_id,
+                source_format=self.format_name,
+                component=component,
+                raw_eventname=raw_eventname,
+                target=target,
+                origin=origin or None,
+                event_context=context or None,
+            ),
+        )
 
     def parse_stream(self, file_path: str | Path) -> Iterator[RawEventInput]:
         path = ensure_file_exists(file_path)
@@ -168,73 +234,8 @@ class MoodleCsvExportParser(SourceParser):
                 raise ValueError(f"El archivo CSV está vacío o sin encabezados: {path}")
 
             for idx, row in enumerate(reader):
-                row_lower = {
-                    (k or "").strip().lower(): (v or "")
-                    for k, v in row.items()
-                    if k is not None
-                }
-                raw_time = _pick_column(row_lower, _COLUMN_ALIASES["time"])
-                if not raw_time:
-                    continue
+                event = self._parse_row(idx, row)
+                if event is not None:
+                    parsed_rows.append((idx, event))
 
-                timestamp = parse_datetime_utc(raw_time, _MOODLE_TIME_FORMATS)
-                user_name = _pick_column(row_lower, _COLUMN_ALIASES["user"])
-                description = _pick_column(row_lower, _COLUMN_ALIASES["description"])
-                context = _pick_column(row_lower, _COLUMN_ALIASES["context"])
-                raw_component = _pick_column(row_lower, _COLUMN_ALIASES["component"])
-                event_name = _pick_column(row_lower, _COLUMN_ALIASES["event_name"])
-                origin = _pick_column(row_lower, _COLUMN_ALIASES["origin"])
-
-                user_match = _USER_ID_RE.search(description)
-                raw_user_id = (
-                    user_match.group(1).strip()
-                    if user_match
-                    else (user_name if user_name and user_name != "-" else f"anon_{idx}")
-                )
-
-                component = _normalize_component(raw_component)
-                action, target, raw_eventname = _infer_action_target(
-                    event_name=event_name,
-                    description=description,
-                    component=component,
-                )
-
-                cmid_match = _CMID_RE.search(description) or _GENERIC_ID_RE.search(description)
-                resource_type = component.removeprefix("mod_")
-                if cmid_match:
-                    resource_id = f"{resource_type}_{cmid_match.group(1).strip()}"
-                else:
-                    resource_id = _slugify_id(resource_type, context or event_name or str(idx))
-
-                course_match = _COURSE_ID_RE.search(description)
-                course_id = (
-                    f"course_{course_match.group(1).strip()}"
-                    if course_match
-                    else self._default_course_id
-                )
-
-                metadata = EventMetadata(
-                    course_id=course_id,
-                    source_format=self.format_name,
-                    component=component,
-                    raw_eventname=raw_eventname,
-                    target=target,
-                    origin=origin or None,
-                    event_context=context or None,
-                )
-                event = RawEventInput(
-                    raw_user_id=raw_user_id,
-                    action=action,
-                    resource=ResourceInfo(
-                        resource_id=resource_id,
-                        resource_type=resource_type,
-                        name=context or event_name or None,
-                    ),
-                    timestamp=timestamp,
-                    metadata=metadata,
-                )
-                parsed_rows.append((idx, event))
-
-        parsed_rows.sort(key=lambda item: (item[1].timestamp, item[0]))
-        for _, event in parsed_rows:
-            yield event
+        yield from iter_chronological(parsed_rows)

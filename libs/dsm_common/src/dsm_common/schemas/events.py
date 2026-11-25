@@ -1,29 +1,27 @@
-"""Esquemas Pydantic del flujo canónico, marcadores de control y cola de errores (DLQ)."""
-
-from datetime import UTC, datetime
+from datetime import datetime
+from enum import StrEnum
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from dsm_common.time import ensure_utc, utc_now
 
-def _ensure_utc(value: datetime) -> datetime:
-    """Normaliza estampas temporales a UTC."""
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
+
+class Granularity(StrEnum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    COURSE = "course"
 
 
 class ResourceInfo(BaseModel):
-    """Recurso pedagógico o entidad instruccional de origen."""
-
     resource_id: str = Field(..., min_length=1)
     resource_type: str = Field(..., min_length=1)
     name: str | None = None
 
 
 class EventMetadata(BaseModel):
-    """Metadatos contextuales enriquecidos del evento (M)."""
-
     model_config = ConfigDict(extra="allow")
 
     course_id: str = Field(..., min_length=1)
@@ -35,8 +33,6 @@ class EventMetadata(BaseModel):
 
 
 class RawEventInput(BaseModel):
-    """Contrato de entrada recibido por C2 Ingestion Gateway."""
-
     run_id: str | None = None
     raw_user_id: str = Field(..., min_length=1)
     action: str = Field(..., min_length=1)
@@ -55,7 +51,7 @@ class RawEventInput(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def _normalize_timestamp(cls, value: datetime) -> datetime:
-        return _ensure_utc(value)
+        return ensure_utc(value)
 
 
 class CanonicalEvent(BaseModel):
@@ -73,12 +69,10 @@ class CanonicalEvent(BaseModel):
     @field_validator("t", "ingested_at")
     @classmethod
     def _normalize_dates(cls, value: datetime) -> datetime:
-        return _ensure_utc(value)
+        return ensure_utc(value)
 
 
 class DlqEvent(BaseModel):
-    """Evento derivado a la Dead Letter Queue cuando falla validación o normalización."""
-
     dlq_id: str = Field(..., min_length=1)
     received_at: datetime
     error_reason: str = Field(..., min_length=1)
@@ -87,18 +81,30 @@ class DlqEvent(BaseModel):
     @field_validator("received_at")
     @classmethod
     def _normalize_received_at(cls, value: datetime) -> datetime:
-        return _ensure_utc(value)
+        return ensure_utc(value)
+
+
+def make_dlq_event(
+    raw_payload: Any,
+    error_reason: str,
+    *,
+    received_at: datetime | None = None,
+) -> DlqEvent:
+    return DlqEvent(
+        dlq_id=str(uuid4()),
+        received_at=received_at or utc_now(),
+        error_reason=error_reason,
+        raw_payload=raw_payload,
+    )
 
 
 class RunEofRequest(BaseModel):
-    """Petición HTTP hacia C2 para señalizar el fin determinista de una corrida."""
-
     raw_user_ids: list[str] = Field(default_factory=list)
     course_id: str | None = None
 
 
 class RunEofEvent(BaseModel):
-    """Marcador de control en-banda en Kafka para cerrar ventanas pendientes por estudiante."""
+    """Marcador de control en-banda para cerrar ventanas pendientes por estudiante."""
 
     event_type: Literal["run_eof"] = "run_eof"
     event_id: str = Field(..., min_length=1)
@@ -110,4 +116,4 @@ class RunEofEvent(BaseModel):
     @field_validator("emitted_at")
     @classmethod
     def _normalize_emitted_at(cls, value: datetime) -> datetime:
-        return _ensure_utc(value)
+        return ensure_utc(value)

@@ -3,7 +3,13 @@ from pathlib import Path
 
 from dsm_common.config import load_features_config, load_hle_catalog, load_windows_config
 from dsm_common.schemas import CanonicalEvent, EventMetadata, ResourceInfo
-from dsm_core.features import FeaturePipeline, group_events_into_sessions
+from dsm_core.features import (
+    FeaturePipeline,
+    MeanSessionDurationExtractor,
+    SessionCountExtractor,
+    WindowContext,
+    group_events_into_sessions,
+)
 from dsm_core.pipeline import PreprocessingEngine
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -151,3 +157,30 @@ def test_preprocessing_engine_determinism_under_different_ingestion_clocks() -> 
     run_fast = _run_with_ingested_offset(1)
     assert run_slow == run_fast
     assert len(run_slow) == 7  # 2 daily + 2 weekly + 2 monthly + 1 course
+
+
+def test_window_context_caches_session_grouping(monkeypatch) -> None:
+    import dsm_core.features.base as features_base
+
+    calls = 0
+    original = features_base.group_events_into_sessions
+
+    def _counting_group(events, inactivity_timeout_sec=1800):
+        nonlocal calls
+        calls += 1
+        return original(events, inactivity_timeout_sec=inactivity_timeout_sec)
+
+    monkeypatch.setattr(features_base, "group_events_into_sessions", _counting_group)
+
+    base = datetime(2024, 9, 2, 10, 0, tzinfo=UTC)
+    events = [
+        _make_event("e1", base, session_hash="s1"),
+        _make_event("e2", base + timedelta(minutes=5), session_hash="s1"),
+    ]
+    ctx = WindowContext(window_start=base, window_end=base + timedelta(days=1))
+    assert SessionCountExtractor().compute(events, ctx) == {"session_count": 1.0}
+    assert MeanSessionDurationExtractor().compute(events, ctx) == {
+        "mean_session_duration_sec": 300.0
+    }
+    assert calls == 1
+

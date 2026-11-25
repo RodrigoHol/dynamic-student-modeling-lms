@@ -1,19 +1,23 @@
-"""Mapeador declarativo de eventos técnicos del LMS a Eventos de Alto Nivel (HLE)."""
-
 from __future__ import annotations
 
 from dsm_common.config import HleCatalogConfig
 from dsm_common.schemas import CanonicalEvent
-from dsm_core.preprocessing.noise_filter import extract_match_context, rule_matches
+from dsm_core.preprocessing.noise_filter import (
+    CompiledRule,
+    MatchContext,
+    compile_rule,
+    extract_match_context,
+)
 
 
 class HLEMapper:
-    """Traduce eventos canónicos del LMS a categorías pedagógicas HLE según reglas YAML."""
-
     def __init__(self, catalog: HleCatalogConfig) -> None:
         self.version: str = catalog.version
         self.rules = list(catalog.rules)
         self.default_hle: str = catalog.default_hle
+        self._compiled_rules: tuple[tuple[CompiledRule, str], ...] = tuple(
+            (compile_rule(rule.match), rule.hle) for rule in self.rules
+        )
 
         ordered_hles: list[str] = []
         for rule in self.rules:
@@ -22,6 +26,12 @@ class HLEMapper:
         if self.default_hle not in ordered_hles:
             ordered_hles.append(self.default_hle)
         self.known_hles: tuple[str, ...] = tuple(ordered_hles)
+
+    def map_context(self, context: MatchContext) -> str:
+        for compiled, hle in self._compiled_rules:
+            if compiled.matches(context):
+                return hle
+        return self.default_hle
 
     def map_fields(
         self,
@@ -32,8 +42,7 @@ class HLEMapper:
         resource_type: str | None = None,
         origin: str | None = None,
     ) -> str:
-        """Mapea campos individuales de un evento al código HLE correspondiente."""
-        context = {
+        context: MatchContext = {
             "component": (component or "").strip().lower(),
             "action": (action or "").strip().lower(),
             "eventname": (eventname or "").strip().lower(),
@@ -41,21 +50,14 @@ class HLEMapper:
             "resource_type": (resource_type or "").strip().lower(),
             "origin": (origin or "").strip().lower(),
         }
-        for rule in self.rules:
-            if rule_matches(rule.match, context):
-                return rule.hle
-        return self.default_hle
+        return self.map_context(context)
 
     def map_event(self, event: CanonicalEvent) -> str:
-        """Devuelve el código HLE correspondiente a un `CanonicalEvent`."""
-        context = extract_match_context(event)
-        for rule in self.rules:
-            if rule_matches(rule.match, context):
-                return rule.hle
-        return self.default_hle
+        return self.map_context(extract_match_context(event))
 
-    def enrich_event(self, event: CanonicalEvent) -> CanonicalEvent:
-        """Devuelve una copia del `CanonicalEvent` con `M.hle` asignado."""
-        hle = self.map_event(event)
+    def with_hle(self, event: CanonicalEvent, hle: str) -> CanonicalEvent:
         updated_meta = event.M.model_copy(update={"hle": hle})
         return event.model_copy(update={"M": updated_meta})
+
+    def enrich_event(self, event: CanonicalEvent) -> CanonicalEvent:
+        return self.with_hle(event, self.map_event(event))

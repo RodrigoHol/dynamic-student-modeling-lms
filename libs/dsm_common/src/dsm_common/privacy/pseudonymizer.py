@@ -1,5 +1,3 @@
-"""Utilidades de seudonimización determinista (ADR-14, RF-03)."""
-
 import hashlib
 import hmac
 
@@ -10,7 +8,6 @@ def pseudonymize_user_id(
     prefix: str = "usr_",
     length: int = 16,
 ) -> str:
-    """Genera un identificador seudonimizado determinista mediante HMAC-SHA256."""
     cleaned_id = raw_user_id.strip()
     if not cleaned_id:
         raise ValueError("raw_user_id no puede estar vacío.")

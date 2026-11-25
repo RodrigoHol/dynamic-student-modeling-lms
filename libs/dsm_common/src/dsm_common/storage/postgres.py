@@ -1,14 +1,12 @@
-"""Repositorio de corridas y snapshots de configuración en PostgreSQL (Sección 6.5)."""
-
 from __future__ import annotations
 
+import asyncio
 import json
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-import asyncpg
 from pydantic import BaseModel, Field
 
 from dsm_common.config.loader import (
@@ -19,11 +17,13 @@ from dsm_common.config.loader import (
     load_process_mining_config,
     load_windows_config,
 )
+from dsm_common.time import utc_now
+
+if TYPE_CHECKING:
+    import asyncpg
 
 
 class RunRecord(BaseModel):
-    """Registro operativo de una ejecución en la tabla `runs`."""
-
     run_id: str
     mode: Literal["stream", "batch"]
     status: Literal["running", "completed", "failed"]
@@ -52,19 +52,13 @@ class RunConfigSnapshot(BaseModel):
 
 
 def load_run_config_snapshot(config_dir: Path) -> RunConfigSnapshot:
-    """Carga y valida los cinco archivos YAML en `config_dir` para registrarlos por `run_id`."""
     hle_path = config_dir / "hle_catalog.yaml"
-    features_path = config_dir / "features.yaml"
-    windows_path = config_dir / "windows.yaml"
-    clustering_path = config_dir / "clustering.yaml"
-    pm_path = config_dir / "process_mining.yaml"
-
     hle = load_hle_catalog(hle_path)
     hle_hash = compute_yaml_hash(hle_path)
-    features = load_features_config(features_path)
-    windows = load_windows_config(windows_path)
-    clustering = load_clustering_config(clustering_path)
-    process_mining = load_process_mining_config(pm_path)
+    features = load_features_config(config_dir / "features.yaml")
+    windows = load_windows_config(config_dir / "windows.yaml")
+    clustering = load_clustering_config(config_dir / "clustering.yaml")
+    process_mining = load_process_mining_config(config_dir / "process_mining.yaml")
 
     return RunConfigSnapshot(
         hle_version=hle.version,
@@ -89,8 +83,6 @@ def load_run_config_snapshot(config_dir: Path) -> RunConfigSnapshot:
 
 
 class RunRepository(ABC):
-    """Contrato común para persistir el ciclo de vida de corridas en PostgreSQL."""
-
     @abstractmethod
     async def start_run(
         self,
@@ -100,37 +92,41 @@ class RunRepository(ABC):
         source_dataset: str,
         speed_factor: str | None,
         config_snapshot: RunConfigSnapshot | None = None,
-    ) -> RunRecord:
-        """Inserta la corrida en estado `running` y opcionalmente su `run_configs`."""
+    ) -> RunRecord: ...
 
     @abstractmethod
-    async def complete_run(self, run_id: str, *, events_processed: int) -> RunRecord:
-        """Marca la corrida como `completed` y registra el total de eventos procesados."""
+    async def complete_run(self, run_id: str, *, events_processed: int) -> RunRecord: ...
 
     @abstractmethod
-    async def fail_run(self, run_id: str, *, events_processed: int = 0) -> RunRecord:
-        """Marca la corrida como `failed` y registra los eventos procesados hasta el fallo."""
+    async def fail_run(self, run_id: str, *, events_processed: int = 0) -> RunRecord: ...
 
     @abstractmethod
-    async def get_run(self, run_id: str) -> RunRecord | None:
-        """Obtiene una corrida por `run_id`, o `None` si no existe."""
+    async def get_run(self, run_id: str) -> RunRecord | None: ...
 
     @abstractmethod
-    async def close(self) -> None:
-        """Cierra las conexiones subyacentes del repositorio."""
+    async def close(self) -> None: ...
 
 
 class PostgresRunRepository(RunRepository):
-    """Implementación asíncrona sobre PostgreSQL usando `asyncpg`."""
-
-    def __init__(self, dsn: str) -> None:
+    def __init__(self, dsn: str, *, min_pool_size: int = 1, max_pool_size: int = 5) -> None:
         self._dsn = dsn
-        self._conn: asyncpg.Connection | None = None
+        self._min_pool_size = min_pool_size
+        self._max_pool_size = max_pool_size
+        self._pool: asyncpg.Pool | None = None
+        self._pool_lock = asyncio.Lock()
 
-    async def _get_conn(self) -> asyncpg.Connection:
-        if self._conn is None or self._conn.is_closed():
-            self._conn = await asyncpg.connect(self._dsn)
-        return self._conn
+    async def _get_pool(self) -> asyncpg.Pool:
+        if self._pool is None:
+            async with self._pool_lock:
+                if self._pool is None:
+                    import asyncpg
+
+                    self._pool = await asyncpg.create_pool(
+                        self._dsn,
+                        min_size=self._min_pool_size,
+                        max_size=self._max_pool_size,
+                    )
+        return self._pool
 
     @staticmethod
     def _row_to_record(row: asyncpg.Record) -> RunRecord:
@@ -154,8 +150,8 @@ class PostgresRunRepository(RunRepository):
         speed_factor: str | None,
         config_snapshot: RunConfigSnapshot | None = None,
     ) -> RunRecord:
-        conn = await self._get_conn()
-        async with conn.transaction():
+        pool = await self._get_pool()
+        async with pool.acquire() as conn, conn.transaction():
             row = await conn.fetchrow(
                 """
                 INSERT INTO runs (
@@ -170,6 +166,8 @@ class PostgresRunRepository(RunRepository):
                 source_dataset,
                 speed_factor,
             )
+            if row is None:
+                raise RuntimeError(f"No se pudo registrar la corrida '{run_id}' en runs.")
             if config_snapshot is not None:
                 await conn.execute(
                     """
@@ -213,69 +211,70 @@ class PostgresRunRepository(RunRepository):
                     config_snapshot.hle_version,
                     json.dumps(config_snapshot.raw_yaml_snapshot),
                 )
-        assert row is not None
+        return self._row_to_record(row)
+
+    async def _update_status(
+        self,
+        run_id: str,
+        status: Literal["completed", "failed"],
+        *,
+        events_processed: int,
+    ) -> RunRecord:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                UPDATE runs
+                SET status = $2,
+                    events_processed = $3,
+                    finished_at = NOW()
+                WHERE run_id = $1
+                RETURNING run_id, mode, status, source_dataset, speed_factor,
+                          events_processed, started_at, finished_at
+                """,
+                run_id,
+                status,
+                events_processed,
+            )
+        if row is None:
+            raise KeyError(f"No existe la corrida '{run_id}' en la tabla runs.")
         return self._row_to_record(row)
 
     async def complete_run(self, run_id: str, *, events_processed: int) -> RunRecord:
-        conn = await self._get_conn()
-        row = await conn.fetchrow(
-            """
-            UPDATE runs
-            SET status = 'completed',
-                events_processed = $2,
-                finished_at = NOW()
-            WHERE run_id = $1
-            RETURNING run_id, mode, status, source_dataset, speed_factor,
-                      events_processed, started_at, finished_at
-            """,
+        return await self._update_status(
             run_id,
-            events_processed,
+            "completed",
+            events_processed=events_processed,
         )
-        if row is None:
-            raise KeyError(f"No existe la corrida '{run_id}' en la tabla runs.")
-        return self._row_to_record(row)
 
     async def fail_run(self, run_id: str, *, events_processed: int = 0) -> RunRecord:
-        conn = await self._get_conn()
-        row = await conn.fetchrow(
-            """
-            UPDATE runs
-            SET status = 'failed',
-                events_processed = $2,
-                finished_at = NOW()
-            WHERE run_id = $1
-            RETURNING run_id, mode, status, source_dataset, speed_factor,
-                      events_processed, started_at, finished_at
-            """,
+        return await self._update_status(
             run_id,
-            events_processed,
+            "failed",
+            events_processed=events_processed,
         )
-        if row is None:
-            raise KeyError(f"No existe la corrida '{run_id}' en la tabla runs.")
-        return self._row_to_record(row)
 
     async def get_run(self, run_id: str) -> RunRecord | None:
-        conn = await self._get_conn()
-        row = await conn.fetchrow(
-            """
-            SELECT run_id, mode, status, source_dataset, speed_factor,
-                   events_processed, started_at, finished_at
-            FROM runs
-            WHERE run_id = $1
-            """,
-            run_id,
-        )
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT run_id, mode, status, source_dataset, speed_factor,
+                       events_processed, started_at, finished_at
+                FROM runs
+                WHERE run_id = $1
+                """,
+                run_id,
+            )
         return self._row_to_record(row) if row is not None else None
 
     async def close(self) -> None:
-        if self._conn is not None and not self._conn.is_closed():
-            await self._conn.close()
-        self._conn = None
+        if self._pool is not None:
+            await self._pool.close()
+            self._pool = None
 
 
 class InMemoryRunRepository(RunRepository):
-    """Repositorio en memoria para pruebas unitarias y de integración sin PostgreSQL."""
-
     def __init__(self) -> None:
         self.runs: dict[str, RunRecord] = {}
         self.run_configs: dict[str, RunConfigSnapshot] = {}
@@ -298,7 +297,7 @@ class InMemoryRunRepository(RunRepository):
             source_dataset=source_dataset,
             speed_factor=speed_factor,
             events_processed=0,
-            started_at=datetime.now(UTC),
+            started_at=utc_now(),
             finished_at=None,
         )
         self.runs[run_id] = record
@@ -306,33 +305,31 @@ class InMemoryRunRepository(RunRepository):
             self.run_configs[run_id] = config_snapshot
         return record
 
-    async def complete_run(self, run_id: str, *, events_processed: int) -> RunRecord:
+    def _update_status(
+        self,
+        run_id: str,
+        status: Literal["completed", "failed"],
+        *,
+        events_processed: int,
+    ) -> RunRecord:
         existing = self.runs.get(run_id)
         if existing is None:
             raise KeyError(f"No existe la corrida '{run_id}'.")
         updated = existing.model_copy(
             update={
-                "status": "completed",
+                "status": status,
                 "events_processed": events_processed,
-                "finished_at": datetime.now(UTC),
+                "finished_at": utc_now(),
             }
         )
         self.runs[run_id] = updated
         return updated
 
+    async def complete_run(self, run_id: str, *, events_processed: int) -> RunRecord:
+        return self._update_status(run_id, "completed", events_processed=events_processed)
+
     async def fail_run(self, run_id: str, *, events_processed: int = 0) -> RunRecord:
-        existing = self.runs.get(run_id)
-        if existing is None:
-            raise KeyError(f"No existe la corrida '{run_id}'.")
-        updated = existing.model_copy(
-            update={
-                "status": "failed",
-                "events_processed": events_processed,
-                "finished_at": datetime.now(UTC),
-            }
-        )
-        self.runs[run_id] = updated
-        return updated
+        return self._update_status(run_id, "failed", events_processed=events_processed)
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         return self.runs.get(run_id)

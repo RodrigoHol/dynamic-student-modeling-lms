@@ -1,20 +1,27 @@
-"""Gestor de ventanas disjuntas simultáneas por tiempo del evento (`t`) y watermark."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from dsm_common.config import WindowsConfig
-from dsm_common.schemas import CanonicalEvent
-from dsm_core.windowing.boundaries import WindowSpec, compute_window_spec, ensure_utc
+from dsm_common.schemas import CanonicalEvent, EventMetadata, ResourceInfo
+from dsm_common.time import ensure_utc
+from dsm_core.windowing.boundaries import WindowSpec, compute_window_spec
+
+_METADATA_FIELDS = frozenset(EventMetadata.model_fields)
+
+
+class KeyValueState(Protocol):
+    def get(self, key: str, default: Any = None) -> Any: ...
+
+    def set(self, key: str, value: Any) -> None: ...
+
+    def delete(self, key: str) -> None: ...
 
 
 @dataclass(slots=True)
 class ClosedWindow:
-    """Ventana disjunta cerrada lista para cálculo de características y traza."""
-
     run_id: str
     course_id: str
     u: str
@@ -28,11 +35,56 @@ class ClosedWindow:
 
 @dataclass(slots=True)
 class WindowAssignmentOutcome:
-    """Resultado de ingresar un evento canónico al gestor multiventana."""
-
     closed_windows: list[ClosedWindow] = field(default_factory=list)
     dropped_late_granularities: list[str] = field(default_factory=list)
     is_duplicate: bool = False
+
+
+def _event_state_key(run_id: str, event_id: str) -> str:
+    return f"ev:{run_id}:{event_id}"
+
+
+def _dump_event_compact(event: CanonicalEvent) -> dict[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "run_id": event.run_id,
+        "u": event.u,
+        "a": event.a,
+        "r": {
+            "resource_id": event.r.resource_id,
+            "resource_type": event.r.resource_type,
+            "name": event.r.name,
+        },
+        "t": event.t.isoformat(),
+        "ingested_at": event.ingested_at.isoformat(),
+        "M": event.M.model_dump(mode="json", exclude_none=True),
+    }
+
+
+def _load_event_compact(data: dict[str, Any]) -> CanonicalEvent:
+    r_data = data["r"]
+    m_data = data["M"]
+    m_known = {k: v for k, v in m_data.items() if k in _METADATA_FIELDS}
+    m_extra = {k: v for k, v in m_data.items() if k not in _METADATA_FIELDS}
+
+    resource = ResourceInfo.model_construct(
+        resource_id=r_data["resource_id"],
+        resource_type=r_data["resource_type"],
+        name=r_data.get("name"),
+    )
+    metadata = EventMetadata.model_construct(_fields_set=set(m_known), **m_known)
+    object.__setattr__(metadata, "__pydantic_extra__", m_extra)
+
+    return CanonicalEvent.model_construct(
+        event_id=data["event_id"],
+        run_id=data["run_id"],
+        u=data["u"],
+        a=data["a"],
+        r=resource,
+        t=ensure_utc(datetime.fromisoformat(data["t"])),
+        ingested_at=ensure_utc(datetime.fromisoformat(data["ingested_at"])),
+        M=metadata,
+    )
 
 
 @dataclass(slots=True)
@@ -47,14 +99,14 @@ class _WindowBucket:
     close_on_eof: bool
     fixed_bounds: bool
     last_event_ingested_at: datetime
-    events: list[CanonicalEvent] = field(default_factory=list)
+    event_ids: list[str] = field(default_factory=list)
     seen_event_ids: set[str] = field(default_factory=set)
 
     def add_event(self, event: CanonicalEvent) -> bool:
         if event.event_id in self.seen_event_ids:
             return False
         self.seen_event_ids.add(event.event_id)
-        self.events.append(event)
+        self.event_ids.append(event.event_id)
         if not self.fixed_bounds:
             if event.t < self.window_start:
                 self.window_start = event.t
@@ -64,8 +116,11 @@ class _WindowBucket:
             self.last_event_ingested_at = event.ingested_at
         return True
 
-    def to_closed_window(self) -> ClosedWindow:
-        ordered_events = sorted(self.events, key=lambda ev: ev.t)
+    def to_closed_window(self, events_by_id: dict[str, CanonicalEvent]) -> ClosedWindow:
+        ordered_events = sorted(
+            (events_by_id[eid] for eid in self.event_ids),
+            key=lambda ev: ev.t,
+        )
         return ClosedWindow(
             run_id=self.run_id,
             course_id=self.course_id,
@@ -90,12 +145,12 @@ class _WindowBucket:
             "close_on_eof": self.close_on_eof,
             "fixed_bounds": self.fixed_bounds,
             "last_event_ingested_at": self.last_event_ingested_at.isoformat(),
-            "events": [ev.model_dump(mode="json") for ev in self.events],
+            "event_ids": self.event_ids,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> _WindowBucket:
-        events = [CanonicalEvent.model_validate(item) for item in data.get("events", [])]
+        event_ids = list(data.get("event_ids", []))
         return cls(
             run_id=data["run_id"],
             course_id=data["course_id"],
@@ -109,8 +164,8 @@ class _WindowBucket:
             last_event_ingested_at=ensure_utc(
                 datetime.fromisoformat(data["last_event_ingested_at"])
             ),
-            events=events,
-            seen_event_ids={ev.event_id for ev in events},
+            event_ids=event_ids,
+            seen_event_ids=set(event_ids),
         )
 
 
@@ -118,14 +173,23 @@ class _WindowBucket:
 class _StudentRunState:
     watermark: datetime
     open_windows: dict[tuple[str, str], _WindowBucket] = field(default_factory=dict)
-    closed_window_keys: set[tuple[str, str]] = field(default_factory=set)
+    events_by_id: dict[str, CanonicalEvent] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def referenced_event_ids(self) -> set[str]:
+        return {eid for bucket in self.open_windows.values() for eid in bucket.event_ids}
+
+    def to_index_dict(self) -> dict[str, Any]:
         return {
             "watermark": self.watermark.isoformat(),
             "open_windows": [bucket.to_dict() for bucket in self.open_windows.values()],
-            "closed_window_keys": [list(key) for key in sorted(self.closed_window_keys)],
         }
+
+    def to_full_dict(self) -> dict[str, Any]:
+        payload = self.to_index_dict()
+        payload["events"] = {
+            eid: _dump_event_compact(ev) for eid, ev in self.events_by_id.items()
+        }
+        return payload
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> _StudentRunState:
@@ -133,16 +197,19 @@ class _StudentRunState:
         for item in data.get("open_windows", []):
             bucket = _WindowBucket.from_dict(item)
             open_windows[(bucket.granularity, bucket.window_id)] = bucket
-        closed_keys = {(pair[0], pair[1]) for pair in data.get("closed_window_keys", [])}
+        events_by_id = {
+            eid: _load_event_compact(raw_ev)
+            for eid, raw_ev in data.get("events", {}).items()
+        }
         return cls(
             watermark=ensure_utc(datetime.fromisoformat(data["watermark"])),
             open_windows=open_windows,
-            closed_window_keys=closed_keys,
+            events_by_id=events_by_id,
         )
 
 
 class MultiGranularityWindowManager:
-    """Administra ventanas disjuntas simultáneas (`daily`, `weekly`, `monthly`, `course`)."""
+    """Administra ventanas disjuntas simultáneas por tiempo del evento `t` y watermark."""
 
     def __init__(
         self,
@@ -183,14 +250,12 @@ class MultiGranularityWindowManager:
             return False
         return watermark >= (bucket.window_end + self._grace)
 
-    def ingest(self, event: CanonicalEvent) -> WindowAssignmentOutcome:
-        """Asigna un evento a las granularidades activas y cierra ventanas vencidas por `t`."""
-        state_key = (event.run_id, event.u)
-        state = self._states.get(state_key)
-        if state is None:
-            state = _StudentRunState(watermark=event.t)
-            self._states[state_key] = state
-        elif event.t > state.watermark:
+    def _assign_event_to_state(
+        self,
+        state: _StudentRunState,
+        event: CanonicalEvent,
+    ) -> tuple[list[str], bool, bool, list[_WindowBucket]]:
+        if event.t > state.watermark:
             state.watermark = event.t
 
         dropped_late: list[str] = []
@@ -207,17 +272,23 @@ class MultiGranularityWindowManager:
                 course_start=self._course_start,
                 course_end=self._course_end,
             )
-            win_key = (spec.granularity, spec.window_id)
 
-            if win_key in state.closed_window_keys:
-                dropped_late.append(granularity)
-                continue
-
+            # Cualquier ventana cuya fecha de cierre + gracia ya fue superada por el watermark
+            # se descarta directamente en esa granularidad para evitar almacenar estado vencido.
             if not spec.close_on_eof and state.watermark >= (spec.window_end + self._grace):
-                state.closed_window_keys.add(win_key)
                 dropped_late.append(granularity)
                 continue
 
+            if (
+                spec.close_on_eof
+                and spec.granularity == "course"
+                and spec.fixed_bounds
+                and state.watermark >= (spec.window_end + self._grace)
+            ):
+                dropped_late.append(granularity)
+                continue
+
+            win_key = (spec.granularity, spec.window_id)
             bucket = state.open_windows.get(win_key)
             if bucket is None:
                 bucket = _WindowBucket(
@@ -239,16 +310,32 @@ class MultiGranularityWindowManager:
             else:
                 saw_duplicate = True
 
-        closed_windows: list[ClosedWindow] = []
         keys_to_close = [
             win_key
             for win_key, bucket in state.open_windows.items()
             if self._should_close_on_watermark(bucket, state.watermark)
         ]
-        for win_key in keys_to_close:
-            bucket = state.open_windows.pop(win_key)
-            state.closed_window_keys.add(win_key)
-            closed_windows.append(bucket.to_closed_window())
+        closing_buckets = [state.open_windows.pop(win_key) for win_key in keys_to_close]
+        return dropped_late, added_any, saw_duplicate, closing_buckets
+
+    def ingest(self, event: CanonicalEvent) -> WindowAssignmentOutcome:
+        state_key = (event.run_id, event.u)
+        state = self._states.get(state_key)
+        if state is None:
+            state = _StudentRunState(watermark=event.t)
+            self._states[state_key] = state
+
+        dropped_late, added_any, saw_duplicate, closing_buckets = self._assign_event_to_state(
+            state, event
+        )
+        if added_any:
+            state.events_by_id[event.event_id] = event
+
+        closed_windows = [bucket.to_closed_window(state.events_by_id) for bucket in closing_buckets]
+        if closing_buckets:
+            referenced = state.referenced_event_ids()
+            for obsolete_id in set(state.events_by_id) - referenced:
+                del state.events_by_id[obsolete_id]
 
         return WindowAssignmentOutcome(
             closed_windows=self._sort_closed_windows(closed_windows),
@@ -257,7 +344,6 @@ class MultiGranularityWindowManager:
         )
 
     def flush_run(self, run_id: str, u: str | None = None) -> list[ClosedWindow]:
-        """Cierra y libera todas las ventanas abiertas de una corrida (al recibir EOF)."""
         matching_keys = [
             key
             for key in self._states
@@ -267,11 +353,132 @@ class MultiGranularityWindowManager:
         for state_key in matching_keys:
             state = self._states.pop(state_key)
             for bucket in state.open_windows.values():
-                closed_windows.append(bucket.to_closed_window())
+                closed_windows.append(bucket.to_closed_window(state.events_by_id))
         return self._sort_closed_windows(closed_windows)
 
+    def ingest_with_state(
+        self,
+        event: CanonicalEvent,
+        state: KeyValueState,
+        *,
+        state_key: str = "window_state",
+    ) -> WindowAssignmentOutcome:
+        """Persiste solo el evento nuevo y el índice ligero en `state` (O(1) por evento)."""
+        entries = self._load_index_entries(state.get(state_key))
+        run_user_key = (event.run_id, event.u)
+        student_state = entries.get(run_user_key)
+        if student_state is None:
+            student_state = _StudentRunState(watermark=event.t)
+            entries[run_user_key] = student_state
+
+        prev_watermark = student_state.watermark
+        dropped_late, added_any, saw_duplicate, closing_buckets = self._assign_event_to_state(
+            student_state, event
+        )
+
+        is_duplicate = saw_duplicate and not added_any
+        if is_duplicate and not closing_buckets:
+            return WindowAssignmentOutcome(
+                dropped_late_granularities=dropped_late,
+                is_duplicate=True,
+            )
+
+        if added_any:
+            state.set(_event_state_key(event.run_id, event.event_id), _dump_event_compact(event))
+
+        closed_windows: list[ClosedWindow] = []
+        if closing_buckets:
+            needed_ids = {eid for bucket in closing_buckets for eid in bucket.event_ids}
+            loaded_events: dict[str, CanonicalEvent] = {}
+            if added_any and event.event_id in needed_ids:
+                loaded_events[event.event_id] = event
+            for eid in needed_ids:
+                if eid not in loaded_events:
+                    raw_ev = state.get(_event_state_key(event.run_id, eid))
+                    if raw_ev is None:
+                        raise KeyError(
+                            f"Falta evento '{eid}' en el estado de '{event.run_id}'."
+                        )
+                    loaded_events[eid] = _load_event_compact(raw_ev)
+
+            closed_windows = [bucket.to_closed_window(loaded_events) for bucket in closing_buckets]
+
+            still_referenced = student_state.referenced_event_ids()
+            for obsolete_id in needed_ids - still_referenced:
+                state.delete(_event_state_key(event.run_id, obsolete_id))
+
+        if added_any or closing_buckets or student_state.watermark != prev_watermark:
+            self._save_index_entries(entries, state, state_key=state_key)
+
+        return WindowAssignmentOutcome(
+            closed_windows=self._sort_closed_windows(closed_windows),
+            dropped_late_granularities=dropped_late,
+            is_duplicate=is_duplicate,
+        )
+
+    def flush_run_with_state(
+        self,
+        run_id: str,
+        state: KeyValueState,
+        *,
+        u: str | None = None,
+        state_key: str = "window_state",
+    ) -> list[ClosedWindow]:
+        entries = self._load_index_entries(state.get(state_key))
+        matching_keys = [
+            key
+            for key in entries
+            if key[0] == run_id and (u is None or key[1] == u)
+        ]
+        if not matching_keys:
+            return []
+
+        closed_windows: list[ClosedWindow] = []
+        for key in matching_keys:
+            student_state = entries.pop(key)
+            needed_ids = student_state.referenced_event_ids()
+            loaded_events: dict[str, CanonicalEvent] = {}
+            for eid in needed_ids:
+                raw_ev = state.get(_event_state_key(run_id, eid))
+                if raw_ev is None:
+                    raise KeyError(f"Falta evento '{eid}' al cerrar ventanas de '{run_id}'.")
+                loaded_events[eid] = _load_event_compact(raw_ev)
+            for bucket in student_state.open_windows.values():
+                closed_windows.append(bucket.to_closed_window(loaded_events))
+            for eid in needed_ids:
+                state.delete(_event_state_key(run_id, eid))
+
+        self._save_index_entries(entries, state, state_key=state_key)
+        return self._sort_closed_windows(closed_windows)
+
+    @staticmethod
+    def _load_index_entries(
+        data: dict[str, Any] | None,
+    ) -> dict[tuple[str, str], _StudentRunState]:
+        if not data:
+            return {}
+        return {
+            (entry["run_id"], entry["u"]): _StudentRunState.from_dict(entry["state"])
+            for entry in data.get("entries", [])
+        }
+
+    @staticmethod
+    def _save_index_entries(
+        entries: dict[tuple[str, str], _StudentRunState],
+        state: KeyValueState,
+        *,
+        state_key: str,
+    ) -> None:
+        if not entries:
+            state.delete(state_key)
+            return
+        serialized = [
+            {"run_id": run_id, "u": user_id, "state": st.to_index_dict()}
+            for (run_id, user_id), st in sorted(entries.items())
+        ]
+        state.set(state_key, {"entries": serialized})
+
     def open_window_count(self, run_id: str | None = None, u: str | None = None) -> int:
-        """Devuelve el número de ventanas actualmente abiertas en memoria."""
         total = 0
         for (r_id, user_id), state in self._states.items():
             if run_id is not None and r_id != run_id:
@@ -282,9 +489,8 @@ class MultiGranularityWindowManager:
         return total
 
     def to_state_dict(self) -> dict[str, Any]:
-        """Serializa el estado completo a un diccionario compatible con JSON/RocksDB."""
         entries = [
-            {"run_id": run_id, "u": user_id, "state": state.to_dict()}
+            {"run_id": run_id, "u": user_id, "state": state.to_full_dict()}
             for (run_id, user_id), state in sorted(self._states.items())
         ]
         return {"entries": entries}
@@ -298,7 +504,6 @@ class MultiGranularityWindowManager:
         course_start: datetime | None = None,
         course_end: datetime | None = None,
     ) -> MultiGranularityWindowManager:
-        """Reconstruye una instancia desde un diccionario serializado previamente."""
         manager = cls(config, course_start=course_start, course_end=course_end)
         if not data:
             return manager

@@ -1,13 +1,11 @@
-"""Registro declarativo y pipeline de extractores de características."""
-
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from dsm_common.config import FeaturesConfig
 from dsm_common.schemas import CanonicalEvent
-from dsm_core.features.base import FeatureExtractor
+from dsm_core.features.base import FeatureExtractor, WindowContext
 from dsm_core.features.extractors import (
     ActiveDaysExtractor,
     HleFrequencyPerCategoryExtractor,
@@ -28,7 +26,6 @@ FEATURE_EXTRACTOR_REGISTRY: dict[str, type[FeatureExtractor]] = {
 
 
 def create_feature_extractor(name: str) -> FeatureExtractor:
-    """Instancia un extractor registrado desde su nombre en `config/features.yaml`."""
     if name not in FEATURE_EXTRACTOR_REGISTRY:
         supported = ", ".join(sorted(FEATURE_EXTRACTOR_REGISTRY))
         raise ValueError(f"Extractor '{name}' no registrado. Disponibles: {supported}")
@@ -36,8 +33,6 @@ def create_feature_extractor(name: str) -> FeatureExtractor:
 
 
 class FeaturePipeline:
-    """Ejecuta en orden los extractores habilitados en `config/features.yaml`."""
-
     def __init__(
         self,
         config: FeaturesConfig,
@@ -52,15 +47,26 @@ class FeaturePipeline:
 
     def extract(
         self,
-        events: list[CanonicalEvent],
-        window_meta: dict[str, Any] | None = None,
+        events: Sequence[CanonicalEvent],
+        window_meta: WindowContext | Mapping[str, Any] | None = None,
     ) -> dict[str, float]:
-        """Computa el vector completo `{feature: valor}` para una ventana."""
-        meta: dict[str, Any] = dict(window_meta or {})
-        if self.hle_categories and "hle_categories" not in meta:
-            meta["hle_categories"] = self.hle_categories
+        if isinstance(window_meta, WindowContext):
+            if window_meta.hle_categories or not self.hle_categories:
+                context = window_meta
+            else:
+                context = WindowContext(
+                    window_start=window_meta.window_start,
+                    window_end=window_meta.window_end,
+                    hle_categories=self.hle_categories,
+                    session_timeout_sec=window_meta.session_timeout_sec,
+                )
+        else:
+            context = WindowContext.from_mapping(
+                window_meta,
+                default_categories=self.hle_categories,
+            )
 
         features: dict[str, float] = {}
         for extractor in self.extractors:
-            features.update(extractor.compute(events, meta))
+            features.update(extractor.compute(events, context))
         return features

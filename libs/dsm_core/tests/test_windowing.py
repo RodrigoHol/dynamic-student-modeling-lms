@@ -135,3 +135,57 @@ def test_window_manager_state_roundtrip_and_clock_invariance() -> None:
     assert out.closed_windows[0].window_id == "2024-09-02"
     flushed = m2.flush_run("run_w", u="usr_001")
     assert len(flushed) == 2
+
+
+def test_window_manager_incremental_state_cleans_all_event_keys() -> None:
+    class _DictState:
+        def __init__(self) -> None:
+            self.data: dict[str, object] = {}
+
+        def get(self, key: str, default=None):
+            return self.data.get(key, default)
+
+        def set(self, key: str, value) -> None:
+            self.data[key] = value
+
+        def delete(self, key: str) -> None:
+            self.data.pop(key, None)
+
+    cfg = load_windows_config(REPO_ROOT / "config" / "windows.yaml")
+    state = _DictState()
+    stateful_mgr = MultiGranularityWindowManager(cfg)
+    mem_mgr = MultiGranularityWindowManager(cfg)
+
+    base = datetime(2024, 9, 2, 10, 0, tzinfo=UTC)
+    ev1 = _make_event("s1", base)
+    ev2 = _make_event("s2", base + timedelta(days=2))
+
+    out1_state = stateful_mgr.ingest_with_state(ev1, state)
+    out1_mem = mem_mgr.ingest(ev1)
+    assert out1_state.closed_windows == out1_mem.closed_windows == []
+    assert "ev:run_w:s1" in state.data
+
+    out2_state = stateful_mgr.ingest_with_state(ev2, state)
+    out2_mem = mem_mgr.ingest(ev2)
+    assert [
+        (w.granularity, w.window_id, [e.event_id for e in w.events])
+        for w in out2_state.closed_windows
+    ] == [
+        (w.granularity, w.window_id, [e.event_id for e in w.events])
+        for w in out2_mem.closed_windows
+    ]
+    # s1 sigue referenciado por weekly, monthly y course abiertos.
+    assert "ev:run_w:s1" in state.data
+    assert "ev:run_w:s2" in state.data
+
+    flushed_state = stateful_mgr.flush_run_with_state("run_w", state, u="usr_001")
+    flushed_mem = mem_mgr.flush_run("run_w", u="usr_001")
+    assert [
+        (w.granularity, w.window_id, [e.event_id for e in w.events])
+        for w in flushed_state
+    ] == [
+        (w.granularity, w.window_id, [e.event_id for e in w.events])
+        for w in flushed_mem
+    ]
+    assert state.data == {}
+

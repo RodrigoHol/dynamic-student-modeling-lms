@@ -1,5 +1,3 @@
-"""Construcción de la aplicación Quix Streams para C4 Preprocessor."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,11 +6,7 @@ from quixstreams import Application
 from quixstreams.dataframe import StreamingDataFrame
 from quixstreams.models.topics import TopicManager
 
-from dsm_common.config import (
-    load_features_config,
-    load_hle_catalog,
-    load_windows_config,
-)
+from dsm_common.config import load_features_config, load_hle_catalog, load_windows_config
 from dsm_common.messaging import Topics
 from dsm_core.pipeline import window_partition_key
 from dsm_preprocessor.config import PreprocessorSettings
@@ -20,7 +14,6 @@ from dsm_preprocessor.processor import PreprocessorHandler
 
 
 def load_preprocessor_handler(config_dir: Path) -> PreprocessorHandler:
-    """Carga los YAML analíticos y construye el `PreprocessorHandler`."""
     hle_catalog = load_hle_catalog(config_dir / "hle_catalog.yaml")
     features_cfg = load_features_config(config_dir / "features.yaml")
     windows_cfg = load_windows_config(config_dir / "windows.yaml")
@@ -32,7 +25,6 @@ def build_application(
     *,
     topic_manager: TopicManager | None = None,
 ) -> tuple[Application, StreamingDataFrame]:
-    """Configura `Application` y el grafo `StreamingDataFrame` sobre Kafka y RocksDB."""
     cfg = settings or PreprocessorSettings()
     cfg.preprocessor_state_dir.mkdir(parents=True, exist_ok=True)
     handler = load_preprocessor_handler(cfg.config_dir)

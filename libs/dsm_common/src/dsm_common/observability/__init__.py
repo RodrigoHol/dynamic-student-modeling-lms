@@ -1,19 +1,4 @@
-from dsm_common.observability.metrics import (
-    EVENTS_RECEIVED_TOTAL,
-    INGESTION_LATENCY_SECONDS,
-    PREPROCESSOR_EVENTS_TOTAL,
-    PREPROCESSOR_LATE_EVENTS_DROPPED_TOTAL,
-    PREPROCESSOR_PROCESSING_LATENCY_SECONDS,
-    PREPROCESSOR_WINDOWS_CLOSED_TOTAL,
-    render_metrics,
-)
+from dsm_common.observability.metrics import render_metrics
+from dsm_common.observability.server import start_observability_server
 
-__all__ = [
-    "EVENTS_RECEIVED_TOTAL",
-    "INGESTION_LATENCY_SECONDS",
-    "PREPROCESSOR_EVENTS_TOTAL",
-    "PREPROCESSOR_LATE_EVENTS_DROPPED_TOTAL",
-    "PREPROCESSOR_PROCESSING_LATENCY_SECONDS",
-    "PREPROCESSOR_WINDOWS_CLOSED_TOTAL",
-    "render_metrics",
-]
+__all__ = ["render_metrics", "start_observability_server"]

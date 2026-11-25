@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Servicio C4: Preprocessor continuo con Quix Streams, HLE y ventanas múltiples"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "dsm-common",
+    "dsm-common[observability]",
     "dsm-core",
     "quixstreams>=3.0.0",
 ]

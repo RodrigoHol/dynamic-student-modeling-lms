@@ -1,5 +1,10 @@
 """Clientes y repositorios de almacenamiento operativo."""
 
+from dsm_common.storage.mongo import (
+    InMemoryProfileRepository,
+    MongoProfileRepository,
+    ProfileRepository,
+)
 from dsm_common.storage.postgres import (
     InMemoryRunRepository,
     PostgresRunRepository,
@@ -10,8 +15,11 @@ from dsm_common.storage.postgres import (
 )
 
 __all__ = [
+    "InMemoryProfileRepository",
     "InMemoryRunRepository",
+    "MongoProfileRepository",
     "PostgresRunRepository",
+    "ProfileRepository",
     "RunConfigSnapshot",
     "RunRecord",
     "RunRepository",

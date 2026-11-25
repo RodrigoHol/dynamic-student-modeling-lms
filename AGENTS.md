@@ -27,6 +27,14 @@ Al iniciar una nueva conversación, tarea o fase:
 
 ---
 
+## Calidad de código, eficiencia y legibilidad
+
+- **Eficiencia en flujo continuo (*hot path*):** diseña el estado con complejidad $O(1)$ por evento/vector; evita re-serializar o recomputar historiales completos en cada mensaje. Precompila reglas/configuraciones al arranque (*fail-fast*), reutiliza *pools*/clientes de BD y agrupa E/S cuando proceses lotes.
+- **Clean code y única fuente de verdad:** mantén funciones cortas con una sola responsabilidad, tipos explícitos (Pydantic/`dataclass` en lugar de `dict` sin tipar) y toda lógica analítica centralizada en `dsm_core` sin duplicarla en `services/` ni `experiments/`.
+- **Código explicable:** usa nombres de dominio claros con unidades explícitas (`_sec`, `_ms`). No escribas comentarios que narren código obvio; documenta únicamente fórmulas matemáticas, invariantes de concurrencia/ventanas y el *porqué* de decisiones no triviales.
+
+---
+
 ## Reglas operativas importantes en este entorno Windows
 
 - Usa siempre `.\.venv\Scripts\pytest.exe` y `.\.venv\Scripts\ruff.exe` directamente (y `.\.venv\Scripts\python.exe` o los ejecutables en `.\.venv\Scripts\` para scripts y CLIs del proyecto).

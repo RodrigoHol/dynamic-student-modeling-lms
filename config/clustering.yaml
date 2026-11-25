@@ -1,8 +1,24 @@
 algorithm: denstream
 seed: 42
+scale_features: true
+top_k_features: 3
 params:
-  decaying_factor: 0.25
+  decaying_factor: 0.05
   beta: 0.75
   mu: 2.0
-  epsilon: 0.5
+  epsilon: 2.8
   n_samples_init: 10
+algorithm_params:
+  denstream:
+    decaying_factor: 0.05
+    beta: 0.75
+    mu: 2.0
+    epsilon: 2.8
+    n_samples_init: 10
+    stream_speed: 100
+  dbstream:
+    clustering_threshold: 2.8
+    fading_factor: 0.05
+    cleanup_interval: 10
+    intersection_factor: 0.3
+    minimum_weight: 1.0

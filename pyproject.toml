@@ -13,6 +13,7 @@ members = [
     "services/ingestion-gateway",
     "services/replayer",
     "services/preprocessor",
+    "services/clustering",
 ]
 
 [dependency-groups]
@@ -34,7 +35,14 @@ select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RET", "PIE", "RUF", "S101"]
 "**/tests/**/*.py" = ["S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["dsm_common", "dsm_core", "dsm_gateway", "dsm_replayer", "dsm_preprocessor"]
+known-first-party = [
+    "dsm_common",
+    "dsm_core",
+    "dsm_gateway",
+    "dsm_replayer",
+    "dsm_preprocessor",
+    "dsm_clustering",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -48,4 +56,5 @@ testpaths = [
     "services/ingestion-gateway/tests",
     "services/replayer/tests",
     "services/preprocessor/tests",
+    "services/clustering/tests",
 ]

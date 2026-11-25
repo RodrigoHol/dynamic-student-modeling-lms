@@ -11,7 +11,7 @@ Plataforma orientada a eventos (arquitectura tipo Kappa) para automatizar el mod
 
 ---
 
-## Estado actual: Fases 1, 2 y 3 completadas (`C2` + `C3` + `dsm_core` + `C4`)
+## Estado actual: Fases 1, 2, 3 y 4 completadas (`C2` + `C3` + `dsm_core` + `C4` + `C5`)
 
 ### Fase 1 — Infraestructura base y puerta de ingesta (`C2`)
 - **Workspace Python 3.12 (`uv`):** librería compartida `libs/dsm_common` (esquema canónico $E = \langle u, a, r, t, M \rangle$, seudonimización determinista `HMAC-SHA256`, cargador de YAML en `config/`, productores Kafka, métricas Prometheus y repositorio de corridas en PostgreSQL) y esqueleto `libs/dsm_core`.
@@ -29,6 +29,11 @@ Plataforma orientada a eventos (arquitectura tipo Kappa) para automatizar el mod
 - **Dominio analítico puro (`libs/dsm_core`):** sin dependencias de Kafka ni bases de datos (ADR-10), implementa `NoiseFilter`, `HLEMapper`, el particionador y gestor de ventanas disjuntas por `t` (`daily`, `weekly`, `monthly`, `course`) con periodo de gracia (`MultiGranularityWindowManager`) y los 6 extractores configurables (`FeaturePipeline`).
 - **Procesador continuo `C4 Preprocessor` (`services/preprocessor`):** servicio sobre Quix Streams + RocksDB que consume `lms.events.canonical`, mantiene el estado de ventanas por estudiante y publica vectores y trazas HLE en `analytics.features` y `analytics.traces` (clave `granularity:u`), exponiendo `GET /health` y `GET /metrics` en el puerto `8004`.
 - Guía de demostración: [docs/fases/Fase_3_Preprocesamiento_HLE_y_Ventanas.md](./docs/fases/Fase_3_Preprocesamiento_HLE_y_Ventanas.md).
+
+### Fase 4 — Motor de clustering evolutivo (`dsm_core.clustering` + `C5`)
+- **Núcleo puro en `libs/dsm_core`:** interfaz `ClusteringAlgorithm`, registro declarativo (`CLUSTERING_REGISTRY`) y adaptadores intercambiables `DenStreamAdapter` y `DBSTREAMAdapter` sobre `River`, aislamiento estricto por `(run_id, granularity)`, estandarización y `z_score` incrementales en $O(1)$ (`OnlineFeatureStats` / Welford) y detección de transiciones entre ventanas (`TransitionTracker`).
+- **Servicio continuo `C5 Clustering Engine` (`services/clustering`):** consume `analytics.features`, realiza `upsert` de perfiles dinámicos (`student_profiles`) y centroides (`cluster_snapshots`) en MongoDB, publica asignaciones `(u -> cluster_id)` en `analytics.assignments` y expone `GET /health` y `GET /metrics` en el puerto `8005`.
+- Guía de demostración: [docs/fases/Fase_4_Motor_de_Clustering_Evolutivo.md](./docs/fases/Fase_4_Motor_de_Clustering_Evolutivo.md).
 
 ---
 
@@ -49,8 +54,9 @@ El menú muestra el estado de cada etapa en pantalla y permite ejecutarlas indiv
 | `2` | Comprobar **Fase 1** | Levanta el stack Docker en estado `healthy`, aplica constraints en Neo4j, prueba `GET /health` y `POST /api/v1/events` (evento válido `202` seudonimizado y malformado `422` a DLQ) y verifica esquemas en PostgreSQL, MongoDB y Neo4j. |
 | `3` | Comprobar **Fase 2** | Genera 5,000 eventos sintéticos (50 estudiantes, 8 semanas), ejecuta `dsm-replayer replay --speed max` y valida en PostgreSQL (`runs` y `run_configs`) y Kafka (`lms.events.canonical`: 5,000 eventos, cero pérdidas y orden cronológico por estudiante). |
 | `4` | Comprobar **Fase 3** | Verifica `C4 Preprocessor`, genera un curso multi-semana con ruido y ejecuta la **prueba de determinismo `10x` vs `max`**, confirmando 100% de igualdad en `analytics.features` y `analytics.traces` en las 4 granularidades (`daily`, `weekly`, `monthly`, `course`). |
-| `5` | Apagar stack | `docker compose down` (detiene contenedores conservando los datos). |
-| `a` | Demostración completa | Ejecuta en orden las etapas `1 → 2 → 3 → 4`. |
+| `5` | Comprobar **Fase 4** | Verifica `C5 Clustering Engine` con `denstream` (perfiles, transiciones y `z_score` en MongoDB + `analytics.assignments` para las 4 granularidades) y el intercambio declarativo a `dbstream` modificando únicamente `config/clustering.yaml`. |
+| `6` | Apagar stack | `docker compose down` (detiene contenedores conservando los datos). |
+| `a` | Demostración completa | Ejecuta en orden las etapas `1 → 2 → 3 → 4 → 5`. |
 | `s` | Estado e interfaces | Muestra `docker compose ps` y las URLs locales para inspección visual. |
 
 También puedes lanzar cualquier etapa directamente sin menú interactivo usando `--step`:
@@ -60,6 +66,7 @@ También puedes lanzar cualquier etapa directamente sin menú interactivo usando
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step 2
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step 3
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step 4
+.\.venv\Scripts\python.exe scripts\demo_menu.py --step 5
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step all
 ```
 
@@ -111,5 +118,6 @@ Con los contenedores corriendo, puedes acceder desde tu navegador a las siguient
 | :--- | :--- | :--- | :--- | :--- |
 | **Swagger / OpenAPI (`C2 Ingestion Gateway`)** | http://localhost:8000/docs | Sin autenticación (local) | Documentación web interactiva generada por FastAPI con todos los endpoints del Gateway (`/api/v1/events`, `/api/v1/events/batch`, `/api/v1/runs/{run_id}/eof`, `/health`, `/metrics`). | Probar el envío de eventos JSON reales o malformados desde el navegador, observar el código de respuesta (`202` o `422`) y verificar la seudonimización inmediata de `u`. |
 | **C4 Preprocessor (`dsm-preprocessor`)** | http://localhost:8004/health | Sin autenticación (local) | Endpoint operativo de salud (`/health`) y métricas Prometheus (`/metrics`) del procesador continuo Quix Streams. | Confirmar disponibilidad del procesador de ventanas y consultar contadores de eventos mapeados, ruido filtrado y ventanas cerradas. |
+| **C5 Clustering Engine (`dsm-clustering`)** | http://localhost:8005/health | Sin autenticación (local) | Endpoint operativo de salud (`/health`) y métricas Prometheus (`/metrics`) del motor de clustering evolutivo sobre River. | Confirmar disponibilidad de `C5` y consultar vectores procesados, transiciones detectadas, outliers y latencia `ingested_to_profile`. |
 | **Redpanda Console (Visor de Kafka)** | http://localhost:8080 | Sin autenticación (local) | Panel visual conectado al broker Apache Kafka para explorar topics, particiones y mensajes almacenados. | Inspeccionar en vivo el registro inmutable `lms.events.canonical` (donde cada evento ya figura como $E = \langle u, a, r, t, M \rangle$ con retención infinita) y auditar los eventos rechazados en `lms.events.dlq`. |
 | **Neo4j Browser (Base de datos de grafos)** | http://localhost:7474 | Usuario: `neo4j`<br>Contraseña: `dsm_neo4j_pass` | Consola gráfica oficial del motor Neo4j Community para consultar nodos, relaciones e índices mediante Cypher. | Verificar las restricciones e índices topológicos (`:Activity`, `:Boundary`, `:DFG`) y, a partir de la Fase 5, visualizar de forma interactiva los grafos de rutas de aprendizaje (DFG) por estudiante y por clúster. |

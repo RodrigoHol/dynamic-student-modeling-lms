@@ -1,7 +1,9 @@
 from demo.phase1 import verify_phase1
 from demo.phase2 import verify_phase2
 from demo.phase3 import verify_phase3
+from demo.phase4 import verify_phase4
 from demo.runner import (
+    CLUSTERING_URL,
     COMPOSE_FILE,
     PREPROCESSOR_URL,
     PYTEST_BIN,
@@ -15,6 +17,7 @@ from demo.runner import (
 )
 
 __all__ = [
+    "CLUSTERING_URL",
     "COMPOSE_FILE",
     "PREPROCESSOR_URL",
     "PYTEST_BIN",
@@ -28,4 +31,5 @@ __all__ = [
     "verify_phase1",
     "verify_phase2",
     "verify_phase3",
+    "verify_phase4",
 ]

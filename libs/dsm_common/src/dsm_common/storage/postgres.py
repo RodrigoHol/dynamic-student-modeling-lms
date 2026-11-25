@@ -66,7 +66,7 @@ def load_run_config_snapshot(config_dir: Path) -> RunConfigSnapshot:
         hle_rules_json=[rule.model_dump(mode="json") for rule in hle.rules],
         hle_is_provisional=hle.status.upper() == "PROVISIONAL",
         clustering_algorithm=clustering.algorithm,
-        clustering_params=clustering.params,
+        clustering_params=clustering.effective_params(),
         seed=clustering.seed,
         active_granularities=windows.active_granularities,
         windows_config=windows.model_dump(mode="json"),

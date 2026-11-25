@@ -1,4 +1,15 @@
-from dsm_common.schemas.analytics import FeatureVectorMessage, TraceEventItem, TraceMessage
+from dsm_common.schemas.analytics import (
+    ClusterAssignmentMessage,
+    ClusteringResultMeta,
+    ClusterSnapshotDocument,
+    ExplainabilityFeature,
+    ExplainabilityMeta,
+    FeatureVectorMessage,
+    ProfileLatenciesMs,
+    StudentProfileDocument,
+    TraceEventItem,
+    TraceMessage,
+)
 from dsm_common.schemas.events import (
     CanonicalEvent,
     DlqEvent,
@@ -13,14 +24,21 @@ from dsm_common.schemas.events import (
 
 __all__ = [
     "CanonicalEvent",
+    "ClusterAssignmentMessage",
+    "ClusterSnapshotDocument",
+    "ClusteringResultMeta",
     "DlqEvent",
     "EventMetadata",
+    "ExplainabilityFeature",
+    "ExplainabilityMeta",
     "FeatureVectorMessage",
     "Granularity",
+    "ProfileLatenciesMs",
     "RawEventInput",
     "ResourceInfo",
     "RunEofEvent",
     "RunEofRequest",
+    "StudentProfileDocument",
     "TraceEventItem",
     "TraceMessage",
     "make_dlq_event",

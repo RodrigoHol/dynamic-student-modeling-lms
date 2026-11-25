@@ -51,7 +51,18 @@ class WindowsConfig(BaseModel):
 class ClusteringConfig(BaseModel):
     algorithm: str
     seed: int = 42
+    scale_features: bool = True
+    top_k_features: int = Field(default=3, ge=1)
     params: dict[str, Any] = Field(default_factory=dict)
+    algorithm_params: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+    def effective_params(self) -> dict[str, Any]:
+        key = self.algorithm.strip().lower()
+        if key in self.algorithm_params:
+            return dict(self.algorithm_params[key])
+        if self.algorithm in self.algorithm_params:
+            return dict(self.algorithm_params[self.algorithm])
+        return dict(self.params)
 
 
 class ProcessMiningConfig(BaseModel):

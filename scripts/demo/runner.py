@@ -13,7 +13,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPO_ROOT / "deploy" / "docker-compose.yml"
 SYNTHETIC_DATASET = REPO_ROOT / "data" / "synthetic" / "synthetic_course_5000.jsonl"
 PHASE3_DATASET = REPO_ROOT / "data" / "synthetic" / "phase3_determinism.jsonl"
+PHASE4_DATASET = REPO_ROOT / "data" / "synthetic" / "phase4_clustering.jsonl"
 PREPROCESSOR_URL = "http://localhost:8004"
+CLUSTERING_URL = "http://localhost:8005"
 
 VENV_SCRIPTS = REPO_ROOT / ".venv" / "Scripts"
 PYTEST_BIN = VENV_SCRIPTS / "pytest.exe"

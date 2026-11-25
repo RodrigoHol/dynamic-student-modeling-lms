@@ -7,6 +7,9 @@ dependencies = [
     "dsm-common",
 ]
 
+[project.optional-dependencies]
+clustering = ["river>=0.21.0"]
+
 [tool.uv.sources]
 dsm-common = { workspace = true }
 

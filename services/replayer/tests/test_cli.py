@@ -97,5 +97,15 @@ def test_cli_replay_no_db_routes_to_gateway(tmp_path: Path, monkeypatch) -> None
     assert replay_res.exit_code == 0, replay_res.output
     assert "run_cli_001" in replay_res.output
     assert "aceptados=25" in replay_res.output
-    canonical = [m for m in producer.messages if m.topic == Topics.CANONICAL_EVENTS]
+    canonical = [
+        m
+        for m in producer.messages
+        if m.topic == Topics.CANONICAL_EVENTS and m.value.get("event_type") != "run_eof"
+    ]
+    eofs = [
+        m
+        for m in producer.messages
+        if m.topic == Topics.CANONICAL_EVENTS and m.value.get("event_type") == "run_eof"
+    ]
     assert len(canonical) == 25
+    assert len(eofs) == 4

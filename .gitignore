@@ -12,3 +12,4 @@ data/raw/*
 !data/raw/README.md
 data/synthetic/*
 !data/synthetic/README.md
+.AGENTS.md

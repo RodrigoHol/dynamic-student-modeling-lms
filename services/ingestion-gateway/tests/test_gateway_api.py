@@ -109,3 +109,24 @@ async def test_metrics_endpoint_exposes_prometheus_counters() -> None:
         resp = await client.get("/metrics")
     assert resp.status_code == 200
     assert "dsm_gateway_events_total" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_publish_run_eof_pseudonymizes_and_deduplicates_users() -> None:
+    async with _build_client() as (client, producer):
+        resp = await client.post(
+            "/api/v1/runs/run_eof_01/eof",
+            json={"raw_user_ids": ["alu_2", "alu_1", "alu_2", "   "], "course_id": "course_105"},
+        )
+
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body == {"status": "eof_published", "run_id": "run_eof_01", "students_signaled": 2}
+    assert len(producer.messages) == 2
+    for msg in producer.messages:
+        assert msg.topic == Topics.CANONICAL_EVENTS
+        assert msg.value["event_type"] == "run_eof"
+        assert msg.value["run_id"] == "run_eof_01"
+        assert msg.value["course_id"] == "course_105"
+        assert msg.key == msg.value["u"]
+        assert msg.value["u"].startswith("usr_")

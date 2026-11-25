@@ -159,3 +159,35 @@ async def test_dispatcher_marks_run_failed_on_gateway_error() -> None:
     record = await run_repo.get_run("run_fail_01")
     assert record is not None
     assert record.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_emit_eof_publishes_markers_after_events() -> None:
+    events = generate_synthetic_events(
+        SyntheticCourseConfig(num_students=3, num_weeks=1, seed=7, target_events=12)
+    )
+    async with _gateway_client() as (client, producer):
+        dispatcher = ReplayDispatcher("http://test", client=client, batch_size=5)
+        stats = await dispatcher.replay(
+            events,
+            run_id="run_eof_test",
+            source_dataset="mem",
+            format_name="synthetic_jsonl",
+            speed=parse_speed_factor("max"),
+            emit_eof=True,
+        )
+
+    assert stats.accepted_events == 12
+    canonical = [
+        m
+        for m in producer.messages
+        if m.topic == Topics.CANONICAL_EVENTS and m.value.get("event_type") != "run_eof"
+    ]
+    eofs = [
+        m
+        for m in producer.messages
+        if m.topic == Topics.CANONICAL_EVENTS and m.value.get("event_type") == "run_eof"
+    ]
+    assert len(canonical) == 12
+    assert len(eofs) == 3
+    assert {m.value["u"] for m in eofs} == {m.value["u"] for m in canonical}

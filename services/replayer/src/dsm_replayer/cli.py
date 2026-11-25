@@ -41,6 +41,7 @@ async def _execute_replay(
     postgres_dsn: str,
     config_dir: Path,
     use_db: bool,
+    emit_eof: bool,
 ) -> ReplayStats:
     speed = parse_speed_factor(speed_raw)
     parser = create_parser(fmt, course_id=course_id)
@@ -65,6 +66,7 @@ async def _execute_replay(
             config_snapshot=config_snapshot,
             max_delay_seconds=max_delay,
             limit=limit,
+            emit_eof=emit_eof,
         )
     finally:
         if repo is not None:
@@ -202,6 +204,12 @@ def generate(
     default=False,
     help="Omite el registro de corrida en PostgreSQL.",
 )
+@click.option(
+    "--emit-eof / --no-emit-eof",
+    default=True,
+    show_default=True,
+    help="Emite señal de fin de corrida (EOF) hacia C2 al concluir el replay.",
+)
 def replay(
     dataset_path: Path,
     fmt: str | None,
@@ -215,6 +223,7 @@ def replay(
     postgres_dsn: str | None,
     config_dir: Path | None,
     no_db: bool,
+    emit_eof: bool,
 ) -> None:
     """Reproduce cronológicamente un dataset hacia C2 Ingestion Gateway."""
     settings = AppSettings()
@@ -238,6 +247,7 @@ def replay(
             postgres_dsn=resolved_dsn,
             config_dir=resolved_config_dir,
             use_db=not no_db,
+            emit_eof=emit_eof,
         )
     )
     db_status = "omitido (--no-db)" if no_db else "completed (PostgreSQL)"

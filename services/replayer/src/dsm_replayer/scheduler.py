@@ -134,6 +134,7 @@ class ReplayDispatcher:
         config_snapshot: RunConfigSnapshot | None = None,
         max_delay_seconds: float | None = None,
         limit: int | None = None,
+        emit_eof: bool = False,
     ) -> ReplayStats:
         """Reproduce el flujo de eventos hacia C2 registrando el ciclo de vida de `run_id`."""
         if limit is not None and limit < 0:
@@ -151,6 +152,8 @@ class ReplayDispatcher:
         accepted_events = 0
         dlq_events = 0
         total_events = 0
+        seen_raw_users: set[str] = set()
+        last_course_id: str | None = None
         started_perf = perf_counter()
 
         owns_client = self._external_client is None
@@ -176,9 +179,13 @@ class ReplayDispatcher:
                             f"{response.text}"
                         )
                     body = response.json()
+                    batch_accepted = int(body.get("accepted", 0))
                     total_events += len(batch)
-                    accepted_events += int(body.get("accepted", 0))
+                    accepted_events += batch_accepted
                     dlq_events += int(body.get("dlq", 0))
+                    if batch_accepted > 0:
+                        seen_raw_users.update(item.raw_user_id for item in batch)
+                        last_course_id = batch[-1].metadata.course_id
             else:
                 prev_ts: datetime | None = None
                 for event in _limited_events():
@@ -199,6 +206,8 @@ class ReplayDispatcher:
                     total_events += 1
                     if response.status_code == 202:
                         accepted_events += 1
+                        seen_raw_users.add(event.raw_user_id)
+                        last_course_id = event.metadata.course_id
                     elif response.status_code == 422:
                         dlq_events += 1
                     else:
@@ -206,6 +215,18 @@ class ReplayDispatcher:
                             f"Error inesperado del Gateway ({response.status_code}): "
                             f"{response.text}"
                         )
+
+            if emit_eof and seen_raw_users:
+                eof_resp = await self._post_with_retry(
+                    client,
+                    f"/api/v1/runs/{run_id}/eof",
+                    {"raw_user_ids": sorted(seen_raw_users), "course_id": last_course_id},
+                )
+                if eof_resp.status_code != 202:
+                    raise RuntimeError(
+                        f"Error inesperado del Gateway al emitir EOF ({eof_resp.status_code}): "
+                        f"{eof_resp.text}"
+                    )
 
             elapsed = perf_counter() - started_perf
             if self._run_repository is not None:

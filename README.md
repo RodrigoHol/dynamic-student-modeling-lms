@@ -11,19 +11,24 @@ Plataforma orientada a eventos (arquitectura tipo Kappa) para automatizar el mod
 
 ---
 
-## Estado actual: Fases 1 y 2 completadas (`C2` + `C3`)
+## Estado actual: Fases 1, 2 y 3 completadas (`C2` + `C3` + `dsm_core` + `C4`)
 
 ### Fase 1 — Infraestructura base y puerta de ingesta (`C2`)
 - **Workspace Python 3.12 (`uv`):** librería compartida `libs/dsm_common` (esquema canónico $E = \langle u, a, r, t, M \rangle$, seudonimización determinista `HMAC-SHA256`, cargador de YAML en `config/`, productores Kafka, métricas Prometheus y repositorio de corridas en PostgreSQL) y esqueleto `libs/dsm_core`.
-- **Puerta de ingesta `C2 Ingestion Gateway` (`services/ingestion-gateway`):** API asíncrona en FastAPI (`POST /api/v1/events` y `/api/v1/events/batch`) que valida, seudonimiza `u`, agrega `ingested_at` y publica en `lms.events.canonical` (o enruta errores a `lms.events.dlq`).
+- **Puerta de ingesta `C2 Ingestion Gateway` (`services/ingestion-gateway`):** API asíncrona en FastAPI (`POST /api/v1/events`, `/api/v1/events/batch` y `/api/v1/runs/{run_id}/eof`) que valida, seudonimiza `u`, agrega `ingested_at` y publica en `lms.events.canonical` (o enruta errores a `lms.events.dlq`).
 - **Infraestructura en Docker Compose (`deploy/docker-compose.yml`):** Apache Kafka 3.8.0 (modo KRaft sin Zookeeper) con creación automática de topics, Redpanda Console, PostgreSQL 16 (7 tablas relacionales), MongoDB 7.0 Community (colecciones e índices) y Neo4j 5.23 Community (restricciones e índices de grafos).
 - Guía de demostración: [docs/fases/Fase_1_Infraestructura_e_Ingesta.md](./docs/fases/Fase_1_Infraestructura_e_Ingesta.md).
 
 ### Fase 2 — Replayer / Simulador e inyección de datos (`C3`)
 - **Parsers enchufables `SourceParser` (`services/replayer`):** adaptadores con autodetección de formato y ordenamiento cronológico estricto por `t` para exportaciones CSV de Moodle (`moodle_csv`), volcados de `mdl_logstore_standard_log` (`moodle_db`) y JSONL sintético (`synthetic_jsonl`).
 - **Generador sintético realista:** genera cursos deterministas con 5 arquetipos conductuales alineados con [config/hle_catalog.yaml](./config/hle_catalog.yaml) y muestras versionadas en [data/samples](./data/samples).
-- **Despachador asíncrono y CLI (`dsm-replayer`):** controla la velocidad de emisión (`1x`, `10x`, `100x`, `max`) hacia `C2` y registra la corrida junto con su snapshot YAML en PostgreSQL (`runs`, `hle_catalog_versions` y `run_configs`).
+- **Despachador asíncrono y CLI (`dsm-replayer`):** controla la velocidad de emisión (`1x`, `10x`, `100x`, `max`) hacia `C2`, emite señal de cierre EOF (`--emit-eof`) y registra la corrida junto con su snapshot YAML en PostgreSQL (`runs`, `hle_catalog_versions` y `run_configs`).
 - Guía de demostración: [docs/fases/Fase_2_Replayer_y_Datos_Sinteticos.md](./docs/fases/Fase_2_Replayer_y_Datos_Sinteticos.md).
+
+### Fase 3 — Preprocesamiento, HLE y ventanas múltiples (`dsm_core` + `C4`)
+- **Dominio analítico puro (`libs/dsm_core`):** sin dependencias de Kafka ni bases de datos (ADR-10), implementa `NoiseFilter`, `HLEMapper`, el particionador y gestor de ventanas disjuntas por `t` (`daily`, `weekly`, `monthly`, `course`) con periodo de gracia (`MultiGranularityWindowManager`) y los 6 extractores configurables (`FeaturePipeline`).
+- **Procesador continuo `C4 Preprocessor` (`services/preprocessor`):** servicio sobre Quix Streams + RocksDB que consume `lms.events.canonical`, mantiene el estado de ventanas por estudiante y publica vectores y trazas HLE en `analytics.features` y `analytics.traces` (clave `granularity:u`), exponiendo `GET /health` y `GET /metrics` en el puerto `8004`.
+- Guía de demostración: [docs/fases/Fase_3_Preprocesamiento_HLE_y_Ventanas.md](./docs/fases/Fase_3_Preprocesamiento_HLE_y_Ventanas.md).
 
 ---
 
@@ -43,8 +48,9 @@ El menú muestra el estado de cada etapa en pantalla y permite ejecutarlas indiv
 | `1` | Entorno, tests y linter | `uv sync --all-packages`, `.\.venv\Scripts\pytest.exe -v` y `.\.venv\Scripts\ruff.exe check .`. |
 | `2` | Comprobar **Fase 1** | Levanta el stack Docker en estado `healthy`, aplica constraints en Neo4j, prueba `GET /health` y `POST /api/v1/events` (evento válido `202` seudonimizado y malformado `422` a DLQ) y verifica esquemas en PostgreSQL, MongoDB y Neo4j. |
 | `3` | Comprobar **Fase 2** | Genera 5,000 eventos sintéticos (50 estudiantes, 8 semanas), ejecuta `dsm-replayer replay --speed max` y valida en PostgreSQL (`runs` y `run_configs`) y Kafka (`lms.events.canonical`: 5,000 eventos, cero pérdidas y orden cronológico por estudiante). |
-| `4` | Apagar stack | `docker compose down` (detiene contenedores conservando los datos). |
-| `a` | Demostración completa | Ejecuta en orden las etapas `1 → 2 → 3`. |
+| `4` | Comprobar **Fase 3** | Verifica `C4 Preprocessor`, genera un curso multi-semana con ruido y ejecuta la **prueba de determinismo `10x` vs `max`**, confirmando 100% de igualdad en `analytics.features` y `analytics.traces` en las 4 granularidades (`daily`, `weekly`, `monthly`, `course`). |
+| `5` | Apagar stack | `docker compose down` (detiene contenedores conservando los datos). |
+| `a` | Demostración completa | Ejecuta en orden las etapas `1 → 2 → 3 → 4`. |
 | `s` | Estado e interfaces | Muestra `docker compose ps` y las URLs locales para inspección visual. |
 
 También puedes lanzar cualquier etapa directamente sin menú interactivo usando `--step`:
@@ -53,6 +59,7 @@ También puedes lanzar cualquier etapa directamente sin menú interactivo usando
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step 1
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step 2
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step 3
+.\.venv\Scripts\python.exe scripts\demo_menu.py --step 4
 .\.venv\Scripts\python.exe scripts\demo_menu.py --step all
 ```
 
@@ -102,6 +109,7 @@ Con los contenedores corriendo, puedes acceder desde tu navegador a las siguient
 
 | Servicio | URL | Credenciales | Qué hace | Para qué sirve |
 | :--- | :--- | :--- | :--- | :--- |
-| **Swagger / OpenAPI (`C2 Ingestion Gateway`)** | http://localhost:8000/docs | Sin autenticación (local) | Documentación web interactiva generada por FastAPI con todos los endpoints del Gateway (`/api/v1/events`, `/api/v1/events/batch`, `/health`, `/metrics`). | Probar el envío de eventos JSON reales o malformados desde el navegador, observar el código de respuesta (`202` o `422`) y verificar la seudonimización inmediata de `u`. |
+| **Swagger / OpenAPI (`C2 Ingestion Gateway`)** | http://localhost:8000/docs | Sin autenticación (local) | Documentación web interactiva generada por FastAPI con todos los endpoints del Gateway (`/api/v1/events`, `/api/v1/events/batch`, `/api/v1/runs/{run_id}/eof`, `/health`, `/metrics`). | Probar el envío de eventos JSON reales o malformados desde el navegador, observar el código de respuesta (`202` o `422`) y verificar la seudonimización inmediata de `u`. |
+| **C4 Preprocessor (`dsm-preprocessor`)** | http://localhost:8004/health | Sin autenticación (local) | Endpoint operativo de salud (`/health`) y métricas Prometheus (`/metrics`) del procesador continuo Quix Streams. | Confirmar disponibilidad del procesador de ventanas y consultar contadores de eventos mapeados, ruido filtrado y ventanas cerradas. |
 | **Redpanda Console (Visor de Kafka)** | http://localhost:8080 | Sin autenticación (local) | Panel visual conectado al broker Apache Kafka para explorar topics, particiones y mensajes almacenados. | Inspeccionar en vivo el registro inmutable `lms.events.canonical` (donde cada evento ya figura como $E = \langle u, a, r, t, M \rangle$ con retención infinita) y auditar los eventos rechazados en `lms.events.dlq`. |
 | **Neo4j Browser (Base de datos de grafos)** | http://localhost:7474 | Usuario: `neo4j`<br>Contraseña: `dsm_neo4j_pass` | Consola gráfica oficial del motor Neo4j Community para consultar nodos, relaciones e índices mediante Cypher. | Verificar las restricciones e índices topológicos (`:Activity`, `:Boundary`, `:DFG`) y, a partir de la Fase 5, visualizar de forma interactiva los grafos de rutas de aprendizaje (DFG) por estudiante y por clúster. |

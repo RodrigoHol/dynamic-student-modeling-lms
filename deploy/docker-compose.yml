@@ -145,8 +145,38 @@ services:
       - ../data:/app/data:ro
       - ../config:/app/config:ro
 
+  preprocessor:
+    build:
+      context: ..
+      dockerfile: services/preprocessor/Dockerfile
+    container_name: dsm-preprocessor
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    ports:
+      - "8004:8004"
+    environment:
+      DSM_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      DSM_CONFIG_DIR: /app/config
+      DSM_PREPROCESSOR_STATE_DIR: /var/lib/dsm-preprocessor/state
+      DSM_PREPROCESSOR_CONSUMER_GROUP: dsm-preprocessor-v1
+      DSM_PREPROCESSOR_AUTO_OFFSET_RESET: earliest
+      DSM_PREPROCESSOR_USE_CHANGELOG_TOPICS: "false"
+      DSM_PREPROCESSOR_METRICS_PORT: 8004
+    volumes:
+      - ../config:/app/config:ro
+      - preprocessor_state:/var/lib/dsm-preprocessor/state
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8004/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
 volumes:
   kafka_data:
   postgres_data:
   mongo_data:
   neo4j_data:
+  preprocessor_state:

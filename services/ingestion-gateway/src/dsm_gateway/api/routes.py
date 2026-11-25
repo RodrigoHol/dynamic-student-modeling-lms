@@ -1,9 +1,11 @@
 """Rutas HTTP del Ingestion Gateway (C2)."""
 
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Annotated, Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Body, Request, Response
+from fastapi import APIRouter, Body, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from dsm_common.config import AppSettings
@@ -13,7 +15,8 @@ from dsm_common.observability import (
     INGESTION_LATENCY_SECONDS,
     render_metrics,
 )
-from dsm_common.schemas import CanonicalEvent, DlqEvent
+from dsm_common.privacy import pseudonymize_user_id
+from dsm_common.schemas import CanonicalEvent, DlqEvent, RunEofEvent, RunEofRequest
 from dsm_gateway.normalizer import normalize_or_dlq
 
 router = APIRouter()
@@ -129,5 +132,49 @@ async def ingest_events_batch(
             "accepted": accepted,
             "dlq": len(dlq_ids),
             "dlq_ids": dlq_ids,
+        },
+    )
+
+
+@router.post("/api/v1/runs/{run_id}/eof", status_code=202)
+async def publish_run_eof(
+    run_id: str,
+    request: Request,
+    payload: RunEofRequest,
+) -> JSONResponse:
+    """Emite marcadores de fin de corrida (`RunEofEvent`) en Kafka por cada estudiante."""
+    clean_run_id = run_id.strip()
+    if not clean_run_id:
+        raise HTTPException(status_code=422, detail="El parámetro run_id no puede estar vacío.")
+
+    producer: EventProducer = request.app.state.producer
+    settings: AppSettings = request.app.state.settings
+
+    unique_raw_ids = sorted(
+        {uid.strip() for uid in payload.raw_user_ids if uid and uid.strip()}
+    )
+    now = datetime.now(UTC)
+
+    for raw_uid in unique_raw_ids:
+        pseudo_u = pseudonymize_user_id(raw_uid, settings.pseudonym_salt)
+        eof_event = RunEofEvent(
+            event_id=str(uuid4()),
+            run_id=clean_run_id,
+            u=pseudo_u,
+            course_id=payload.course_id,
+            emitted_at=now,
+        )
+        await producer.publish(
+            Topics.CANONICAL_EVENTS,
+            key=pseudo_u,
+            value=eof_event.model_dump(mode="json"),
+        )
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "eof_published",
+            "run_id": clean_run_id,
+            "students_signaled": len(unique_raw_ids),
         },
     )

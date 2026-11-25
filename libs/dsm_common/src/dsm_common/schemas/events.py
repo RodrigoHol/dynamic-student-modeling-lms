@@ -1,7 +1,7 @@
-"""Esquemas Pydantic del flujo canónico y cola de errores (DLQ)."""
+"""Esquemas Pydantic del flujo canónico, marcadores de control y cola de errores (DLQ)."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -87,4 +87,27 @@ class DlqEvent(BaseModel):
     @field_validator("received_at")
     @classmethod
     def _normalize_received_at(cls, value: datetime) -> datetime:
+        return _ensure_utc(value)
+
+
+class RunEofRequest(BaseModel):
+    """Petición HTTP hacia C2 para señalizar el fin determinista de una corrida."""
+
+    raw_user_ids: list[str] = Field(default_factory=list)
+    course_id: str | None = None
+
+
+class RunEofEvent(BaseModel):
+    """Marcador de control en-banda en Kafka para cerrar ventanas pendientes por estudiante."""
+
+    event_type: Literal["run_eof"] = "run_eof"
+    event_id: str = Field(..., min_length=1)
+    run_id: str = Field(..., min_length=1)
+    u: str = Field(..., min_length=1)
+    course_id: str | None = None
+    emitted_at: datetime
+
+    @field_validator("emitted_at")
+    @classmethod
+    def _normalize_emitted_at(cls, value: datetime) -> datetime:
         return _ensure_utc(value)

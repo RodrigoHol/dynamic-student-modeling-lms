@@ -1,4 +1,4 @@
-"""Menú interactivo para verificar y demostrar las Fases 1 y 2 desde terminal."""
+"""Menú interactivo para verificar y demostrar las Fases 1, 2 y 3 desde terminal."""
 
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ from dsm_common.config import AppSettings
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_FILE = REPO_ROOT / "deploy" / "docker-compose.yml"
 SYNTHETIC_DATASET = REPO_ROOT / "data" / "synthetic" / "synthetic_course_5000.jsonl"
+PHASE3_DATASET = REPO_ROOT / "data" / "synthetic" / "phase3_determinism.jsonl"
+PREPROCESSOR_URL = "http://localhost:8004"
 VENV_SCRIPTS = REPO_ROOT / ".venv" / "Scripts"
 PYTEST_BIN = VENV_SCRIPTS / "pytest.exe"
 RUFF_BIN = VENV_SCRIPTS / "ruff.exe"
@@ -273,7 +275,7 @@ async def _verify_phase2_pg_and_kafka(settings: AppSettings, run_id: str) -> Non
             for records in batches.values():
                 for msg in records:
                     ev = msg.value
-                    if ev.get("run_id") == run_id:
+                    if ev.get("run_id") == run_id and ev.get("event_type") != "run_eof":
                         total_for_run += 1
                         per_student_ts[ev["u"]].append(datetime.fromisoformat(ev["t"]))
     finally:
@@ -327,9 +329,255 @@ def stage_3_verify_phase2(settings: AppSettings) -> None:
     print(f"\n[OK] Etapa 3 verificada: 5,000 eventos validados en PostgreSQL y Kafka ({run_id}).")
 
 
-def stage_4_stop_stack() -> None:
-    """Etapa 4: Apaga los contenedores Docker conservando los volúmenes de datos."""
-    _print_header("ETAPA 4 — Apagar stack Docker (conservando volúmenes)")
+def stage_4_verify_phase3(settings: AppSettings) -> None:
+    """Etapa 4: Verifica C4 Preprocessor y prueba de determinismo 10x vs max."""
+    _print_header("ETAPA 4 — Comprobación de Fase 3 (C4 Preprocessor + Determinismo 10x vs max)")
+
+    async def _check_c4_health() -> None:
+        async with httpx.AsyncClient(base_url=PREPROCESSOR_URL, timeout=10.0) as client:
+            resp = await client.get("/health")
+            if resp.status_code != 200 or resp.json().get("status") != "ok":
+                raise RuntimeError(f"Healthcheck inválido en C4 Preprocessor: {resp.text}")
+            print(f"C4 /health -> {resp.status_code} {resp.json()}")
+
+    asyncio.run(_check_c4_health())
+
+    _run_cmd(
+        [
+            str(REPLAYER_BIN),
+            "generate",
+            str(PHASE3_DATASET),
+            "--target-events",
+            "240",
+            "--students",
+            "10",
+            "--weeks",
+            "8",
+            "--seed",
+            "77",
+            "--noise-ratio",
+            "0.05",
+        ]
+    )
+
+    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    suffix = uuid4().hex[:4]
+    run_10x = f"run_p3_10x_{stamp}_{suffix}"
+    run_max = f"run_p3_max_{stamp}_{suffix}"
+
+    _run_cmd(
+        [
+            str(REPLAYER_BIN),
+            "replay",
+            str(PHASE3_DATASET),
+            "--speed",
+            "10x",
+            "--max-delay",
+            "0.015",
+            "--run-id",
+            run_10x,
+        ]
+    )
+    _run_cmd(
+        [
+            str(REPLAYER_BIN),
+            "replay",
+            str(PHASE3_DATASET),
+            "--speed",
+            "max",
+            "--run-id",
+            run_max,
+        ]
+    )
+
+    asyncio.run(_verify_phase3_determinism(settings, run_10x, run_max))
+    print(
+        f"\n[OK] Etapa 4 verificada: determinismo 100% entre {run_10x} (10x) y {run_max} (max)."
+    )
+
+
+async def _collect_topic_records(
+    bootstrap_servers: str,
+    topic: str,
+    target_run_ids: set[str],
+) -> list[dict]:
+    consumer = AIOKafkaConsumer(
+        topic,
+        bootstrap_servers=bootstrap_servers,
+        auto_offset_reset="earliest",
+        enable_auto_commit=False,
+        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+    )
+    await consumer.start()
+    collected: list[dict] = []
+    try:
+        partitions = sorted(consumer.assignment(), key=lambda tp: tp.partition)
+        if not partitions:
+            raise RuntimeError(f"No se encontraron particiones asignadas en {topic}.")
+        await consumer.seek_to_beginning(*partitions)
+        end_offsets = await consumer.end_offsets(partitions)
+        while True:
+            positions = {tp: await consumer.position(tp) for tp in partitions}
+            if all(positions[tp] >= end_offsets[tp] for tp in partitions):
+                break
+            batches = await consumer.getmany(timeout_ms=2000)
+            if not batches:
+                break
+            for records in batches.values():
+                for msg in records:
+                    val = msg.value
+                    if isinstance(val, dict) and val.get("run_id") in target_run_ids:
+                        collected.append(val)
+    finally:
+        await consumer.stop()
+    return collected
+
+
+async def _verify_phase3_determinism(
+    settings: AppSettings,
+    run_10x: str,
+    run_max: str,
+    *,
+    expected_students: int = 10,
+    timeout_seconds: float = 45.0,
+) -> None:
+    target_runs = {run_10x, run_max}
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+
+    feat_records: list[dict] = []
+    trace_records: list[dict] = []
+    while loop.time() < deadline:
+        feat_records = await _collect_topic_records(
+            settings.kafka_bootstrap_servers,
+            "analytics.features",
+            target_runs,
+        )
+        trace_records = await _collect_topic_records(
+            settings.kafka_bootstrap_servers,
+            "analytics.traces",
+            target_runs,
+        )
+        course_feats_10x = {
+            r["u"] for r in feat_records if r["run_id"] == run_10x and r["granularity"] == "course"
+        }
+        course_feats_max = {
+            r["u"] for r in feat_records if r["run_id"] == run_max and r["granularity"] == "course"
+        }
+        course_traces_10x = {
+            r["u"]
+            for r in trace_records
+            if r["run_id"] == run_10x and r["granularity"] == "course"
+        }
+        course_traces_max = {
+            r["u"]
+            for r in trace_records
+            if r["run_id"] == run_max and r["granularity"] == "course"
+        }
+        if (
+            len(course_feats_10x) >= expected_students
+            and len(course_feats_max) >= expected_students
+            and len(course_traces_10x) >= expected_students
+            and len(course_traces_max) >= expected_students
+        ):
+            break
+        await asyncio.sleep(1.0)
+
+    def _normalize_features(run_id: str) -> dict[tuple[str, str, str], dict]:
+        result: dict[tuple[str, str, str], dict] = {}
+        for rec in feat_records:
+            if rec["run_id"] != run_id:
+                continue
+            key = (rec["granularity"], rec["window_id"], rec["u"])
+            result[key] = {
+                "course_id": rec["course_id"],
+                "window_start": rec["window_start"],
+                "window_end": rec["window_end"],
+                "features_version": rec["features_version"],
+                "hle_version": rec["hle_version"],
+                "event_count": rec["event_count"],
+                "features": rec["features"],
+            }
+        return result
+
+    def _normalize_traces(run_id: str) -> dict[tuple[str, str, str], dict]:
+        result: dict[tuple[str, str, str], dict] = {}
+        for rec in trace_records:
+            if rec["run_id"] != run_id:
+                continue
+            key = (rec["granularity"], rec["window_id"], rec["u"])
+            result[key] = {
+                "course_id": rec["course_id"],
+                "window_start": rec["window_start"],
+                "window_end": rec["window_end"],
+                "hle_version": rec["hle_version"],
+                "event_count": rec["event_count"],
+                "trace": [
+                    (
+                        item["hle"],
+                        item["t"],
+                        item["a"],
+                        item["resource_id"],
+                        item["resource_type"],
+                        item.get("session_hash"),
+                    )
+                    for item in rec["trace"]
+                ],
+            }
+        return result
+
+    feats_10x = _normalize_features(run_10x)
+    feats_max = _normalize_features(run_max)
+    traces_10x = _normalize_traces(run_10x)
+    traces_max = _normalize_traces(run_max)
+
+    if not feats_10x or not traces_10x:
+        raise RuntimeError(
+            "No se recibieron ventanas en analytics.features / analytics.traces dentro del timeout."
+        )
+
+    granularities_feat = {k[0] for k in feats_10x}
+    granularities_trace = {k[0] for k in traces_10x}
+    expected_grans = {"daily", "weekly", "monthly", "course"}
+    if granularities_feat != expected_grans or granularities_trace != expected_grans:
+        raise RuntimeError(
+            f"Faltan granularidades en salida (features={sorted(granularities_feat)}, "
+            f"traces={sorted(granularities_trace)})."
+        )
+
+    leaked_noise = [
+        item
+        for rec in traces_10x.values()
+        for item in rec["trace"]
+        if item[4] == "report"
+    ]
+    if leaked_noise:
+        raise RuntimeError(f"Se filtraron eventos de ruido en analytics.traces: {leaked_noise[:3]}")
+
+    if feats_10x != feats_max:
+        diff_keys = sorted(set(feats_10x) ^ set(feats_max))
+        raise RuntimeError(
+            f"Divergencia de determinismo 10x vs max en analytics.features (claves={diff_keys[:5]})"
+        )
+    if traces_10x != traces_max:
+        diff_keys = sorted(set(traces_10x) ^ set(traces_max))
+        raise RuntimeError(
+            f"Divergencia de determinismo 10x vs max en analytics.traces (claves={diff_keys[:5]})"
+        )
+
+    print(
+        f"analytics.features OK -> {len(feats_10x)} ventanas idénticas (10x == max) | "
+        f"granularidades={sorted(granularities_feat)}"
+    )
+    print(
+        f"analytics.traces   OK -> {len(traces_10x)} trazas idénticas (10x == max) | "
+        "ruido filtrado=100%"
+    )
+
+
+def stage_5_stop_stack() -> None:
+    """Etapa 5: Apaga los contenedores Docker conservando los volúmenes de datos."""
+    _print_header("ETAPA 5 — Apagar stack Docker (conservando volúmenes)")
     _run_cmd(_compose_cmd("down"))
     print("Contenedores detenidos.")
 
@@ -340,6 +588,7 @@ def show_status(settings: AppSettings) -> None:
     _run_cmd(_compose_cmd("ps"), check=False)
     print("\nInterfaces web locales para demostración:")
     print(f"  - Swagger / OpenAPI (C2 Gateway): {settings.gateway_url.rstrip('/')}/docs")
+    print(f"  - C4 Preprocessor (/health):      {PREPROCESSOR_URL}/health")
     print("  - Redpanda Console (Kafka):       http://localhost:8080")
     print("  - Neo4j Browser (Grafos):         http://localhost:7474")
 
@@ -352,8 +601,9 @@ def _render_menu(statuses: dict[str, str]) -> None:
     print(f"  [1] Etapa 1: Entorno, pytest y ruff                   [{statuses['1']}]")
     print(f"  [2] Etapa 2: Comprobar Fase 1 (Docker + C2 + 3 BDs)   [{statuses['2']}]")
     print(f"  [3] Etapa 3: Comprobar Fase 2 (5,000 ev C3 -> Kafka)  [{statuses['3']}]")
-    print(f"  [4] Etapa 4: Apagar stack Docker (down)               [{statuses['4']}]")
-    print("  [a] Ejecutar demostración completa (Etapas 1 -> 2 -> 3)")
+    print(f"  [4] Etapa 4: Comprobar Fase 3 (C4 + 10x vs max)       [{statuses['4']}]")
+    print(f"  [5] Etapa 5: Apagar stack Docker (down)               [{statuses['5']}]")
+    print("  [a] Ejecutar demostración completa (Etapas 1 -> 2 -> 3 -> 4)")
     print("  [s] Ver estado de contenedores e interfaces web")
     print("  [q] Salir")
     print("-" * 72)
@@ -376,7 +626,8 @@ def _execute_choice(
         "1": stage_1_env_and_tests,
         "2": lambda: stage_2_verify_phase1(settings),
         "3": lambda: stage_3_verify_phase2(settings),
-        "4": stage_4_stop_stack,
+        "4": lambda: stage_4_verify_phase3(settings),
+        "5": stage_5_stop_stack,
     }
 
     if normalized == "s":
@@ -384,7 +635,7 @@ def _execute_choice(
         return True
 
     if normalized == "a":
-        for key in ("1", "2", "3"):
+        for key in ("1", "2", "3", "4"):
             try:
                 actions[key]()
                 statuses[key] = "OK"
@@ -392,7 +643,7 @@ def _execute_choice(
                 statuses[key] = "Error"
                 print(f"\n[ERROR] Falló la etapa {key}: {exc}")
                 return True
-        print("\n[OK] Demostración completa (Etapas 1 -> 2 -> 3) finalizada con éxito.")
+        print("\n[OK] Demostración completa (Etapas 1 -> 2 -> 3 -> 4) finalizada con éxito.")
         return True
 
     if normalized in actions:
@@ -410,11 +661,11 @@ def _execute_choice(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Menú interactivo para verificar y demostrar las Fases 1 y 2."
+        description="Menú interactivo para verificar y demostrar las Fases 1, 2 y 3."
     )
     parser.add_argument(
         "--step",
-        choices=["0", "1", "2", "3", "4", "all", "status"],
+        choices=["0", "1", "2", "3", "4", "5", "all", "status"],
         default=None,
         help="Ejecuta una etapa directamente sin abrir el menú interactivo.",
     )
@@ -429,7 +680,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     settings = AppSettings()
-    statuses = {"0": "Pendiente", "1": "Pendiente", "2": "Pendiente", "3": "Pendiente", "4": "-"}
+    statuses = {
+        "0": "Pendiente",
+        "1": "Pendiente",
+        "2": "Pendiente",
+        "3": "Pendiente",
+        "4": "Pendiente",
+        "5": "-",
+    }
 
     if args.step is not None:
         mapped = {"all": "a", "status": "s"}.get(args.step, args.step)

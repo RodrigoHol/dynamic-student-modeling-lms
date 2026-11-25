@@ -1,0 +1,81 @@
+Hora,Nombre completo del usuario,Usuario afectado,Contexto del evento,Componente,Nombre del evento,Descripción,Origen,Dirección IP
+"03/09/2024, 04:35:36",alu_003,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"03/09/2024, 04:42:04",alu_003,-,Guía Temática 2,mod_page,Módulo de curso viewed,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"03/09/2024, 05:05:17",alu_003,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"03/09/2024, 05:06:53",alu_003,-,Guía Temática 2,mod_page,Módulo de curso viewed,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"03/09/2024, 16:35:54",alu_002,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"03/09/2024, 16:38:51",alu_002,-,Lectura Semana 2,mod_resource,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"03/09/2024, 16:52:40",alu_002,-,Foro de Discusión 4,mod_forum,Mensaje creado en el foro,El usuario con id 'alu_002' realizó 'created' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"03/09/2024, 17:02:54",alu_002,-,Tarea Práctica 5,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_002' realizó 'submitted' en el módulo del curso id '5' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 00:31:56",alu_002,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 00:37:20",alu_002,-,Lectura Semana 2,mod_resource,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 00:46:42",alu_002,-,Foro de Discusión 4,mod_forum,Mensaje creado en el foro,El usuario con id 'alu_002' realizó 'created' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 01:01:52",alu_002,-,Calificaciones 2,gradereport_user,Informe de usuario de calificaciones visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 22:04:15",alu_002,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 22:08:21",alu_002,-,Guía Temática 3,mod_page,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '3' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 22:19:36",alu_002,-,Foro de Discusión 4,mod_forum,Mensaje creado en el foro,El usuario con id 'alu_002' realizó 'created' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"05/09/2024, 22:28:25",alu_002,-,Calificaciones 2,gradereport_user,Informe de usuario de calificaciones visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"06/09/2024, 17:31:03",alu_003,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"06/09/2024, 17:41:02",alu_003,-,Foro de Discusión 3,mod_forum,Módulo de curso viewed,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '3' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 02:28:25",alu_004,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 02:41:30",alu_004,-,Cuestionario 3,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_004' realizó 'submitted' en el módulo del curso id '3' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 03:18:00",alu_004,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 03:24:48",alu_004,-,Lectura Semana 2,mod_resource,Módulo de curso viewed,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 04:10:07",alu_005,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_005' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 04:12:21",alu_005,-,Informe de Registro 1,core,Informe de registro visto (log_report_viewed),El usuario con id 'alu_005' realizó 'viewed' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 04:22:07",alu_005,-,Calificaciones 2,gradereport_user,Informe de usuario de calificaciones visto,El usuario con id 'alu_005' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 17:36:03",alu_002,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 17:51:28",alu_002,-,Guía Temática 3,mod_page,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '3' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 17:59:42",alu_002,-,Foro de Discusión 4,mod_forum,Mensaje creado en el foro,El usuario con id 'alu_002' realizó 'created' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"07/09/2024, 18:09:05",alu_002,-,Calificaciones 2,gradereport_user,Informe de usuario de calificaciones visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"08/09/2024, 02:09:05",alu_004,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"08/09/2024, 02:29:35",alu_004,-,Tarea Práctica 3,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_004' realizó 'submitted' en el módulo del curso id '3' del curso con id '105'.,web,127.0.0.1
+"08/09/2024, 05:34:43",alu_003,-,Guía Temática 2,mod_page,Módulo de curso viewed,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"08/09/2024, 05:43:05",alu_003,-,Lectura Semana 3,mod_resource,Módulo de curso viewed,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '3' del curso con id '105'.,web,127.0.0.1
+"08/09/2024, 07:57:08",alu_005,-,Lectura Semana 2,mod_resource,Módulo de curso viewed,El usuario con id 'alu_005' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"08/09/2024, 08:08:27",alu_005,-,Cuestionario 3,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_005' realizó 'submitted' en el módulo del curso id '3' del curso con id '105'.,web,127.0.0.1
+"09/09/2024, 00:06:23",alu_001,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"09/09/2024, 00:15:32",alu_001,-,Lectura Semana 2,mod_resource,Módulo de curso viewed,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"11/09/2024, 00:46:43",alu_002,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"11/09/2024, 00:49:35",alu_002,-,Guía Temática 5,mod_page,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '5' del curso con id '105'.,web,127.0.0.1
+"11/09/2024, 00:57:30",alu_002,-,Tarea Práctica 7,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_002' realizó 'submitted' en el módulo del curso id '7' del curso con id '105'.,web,127.0.0.1
+"11/09/2024, 17:09:06",alu_001,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"11/09/2024, 17:14:07",alu_001,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"11/09/2024, 17:21:22",alu_001,-,Tarea Práctica 6,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_001' realizó 'submitted' en el módulo del curso id '6' del curso con id '105'.,web,127.0.0.1
+"11/09/2024, 17:30:52",alu_001,-,Cuestionario 1,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_001' realizó 'submitted' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1
+"13/09/2024, 06:41:22",alu_002,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"13/09/2024, 06:43:54",alu_002,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"13/09/2024, 06:51:20",alu_002,-,Foro de Discusión 2,mod_forum,Mensaje creado en el foro,El usuario con id 'alu_002' realizó 'created' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"13/09/2024, 07:02:41",alu_002,-,Tarea Práctica 7,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_002' realizó 'submitted' en el módulo del curso id '7' del curso con id '105'.,web,127.0.0.1
+"14/09/2024, 05:03:20",alu_004,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"14/09/2024, 05:05:38",alu_004,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"14/09/2024, 05:12:19",alu_004,-,Calificaciones 2,gradereport_user,Informe de usuario de calificaciones visto,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"14/09/2024, 17:47:08",alu_002,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"14/09/2024, 17:55:34",alu_002,-,Guía Temática 5,mod_page,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '5' del curso con id '105'.,web,127.0.0.1
+"14/09/2024, 18:09:13",alu_002,-,Tarea Práctica 7,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_002' realizó 'submitted' en el módulo del curso id '7' del curso con id '105'.,web,127.0.0.1
+"14/09/2024, 18:20:56",alu_002,-,Calificaciones 2,gradereport_user,Informe de usuario de calificaciones visto,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 01:29:11",alu_002,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 01:31:25",alu_002,-,Foro de Discusión 1,mod_forum,Módulo de curso viewed,El usuario con id 'alu_002' realizó 'viewed' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 01:44:00",alu_002,-,Cuestionario 1,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_002' realizó 'submitted' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 01:52:57",alu_003,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 02:02:00",alu_003,-,Guía Temática 4,mod_page,Módulo de curso viewed,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 07:11:38",alu_004,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 07:14:41",alu_004,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_004' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 19:39:24",alu_001,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 19:44:12",alu_001,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 19:57:33",alu_001,-,Tarea Práctica 6,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_001' realizó 'submitted' en el módulo del curso id '6' del curso con id '105'.,web,127.0.0.1
+"15/09/2024, 20:06:22",alu_001,-,Cuestionario 1,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_001' realizó 'submitted' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 00:19:41",alu_001,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 00:24:38",alu_001,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 00:32:17",alu_001,-,Tarea Práctica 6,mod_assign,Se ha enviado una entrega,El usuario con id 'alu_001' realizó 'submitted' en el módulo del curso id '6' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 00:41:21",alu_001,-,Cuestionario 1,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_001' realizó 'submitted' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 01:20:16",alu_003,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 01:28:20",alu_003,-,Lectura Semana 5,mod_resource,Módulo de curso viewed,El usuario con id 'alu_003' realizó 'viewed' en el módulo del curso id '5' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 03:28:32",alu_005,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_005' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 03:38:10",alu_005,-,Cuestionario 5,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_005' realizó 'submitted' en el módulo del curso id '5' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 03:42:07",alu_005,-,Calificaciones 2,gradereport_user,Informe de usuario de calificaciones visto,El usuario con id 'alu_005' realizó 'viewed' en el módulo del curso id '2' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 04:45:58",alu_005,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_005' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 04:54:12",alu_001,-,Curso Principal course_105,core,Curso visto,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '105' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 05:01:32",alu_001,-,Lectura Semana 4,mod_resource,Módulo de curso viewed,El usuario con id 'alu_001' realizó 'viewed' en el módulo del curso id '4' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 05:05:54",alu_001,-,Foro de Discusión 1,mod_forum,Mensaje creado en el foro,El usuario con id 'alu_001' realizó 'created' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1
+"16/09/2024, 05:15:47",alu_001,-,Cuestionario 1,mod_quiz,Intento de cuestionario enviado,El usuario con id 'alu_001' realizó 'submitted' en el módulo del curso id '1' del curso con id '105'.,web,127.0.0.1

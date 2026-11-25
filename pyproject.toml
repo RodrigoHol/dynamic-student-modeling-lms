@@ -11,6 +11,7 @@ members = [
     "libs/dsm_common",
     "libs/dsm_core",
     "services/ingestion-gateway",
+    "services/replayer",
 ]
 
 [dependency-groups]
@@ -29,12 +30,14 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["dsm_common", "dsm_core", "dsm_gateway"]
+known-first-party = ["dsm_common", "dsm_core", "dsm_gateway", "dsm_replayer"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = [
     "libs/dsm_common/tests",
     "libs/dsm_core/tests",
     "services/ingestion-gateway/tests",
+    "services/replayer/tests",
 ]

@@ -31,3 +31,4 @@ class AppSettings(BaseSettings):
 
     gateway_host: str = "0.0.0.0"
     gateway_port: int = 8000
+    gateway_url: str = "http://localhost:8000"

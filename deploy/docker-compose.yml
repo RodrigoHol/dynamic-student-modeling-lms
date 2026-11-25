@@ -126,6 +126,25 @@ services:
       timeout: 5s
       retries: 5
 
+  replayer:
+    build:
+      context: ..
+      dockerfile: services/replayer/Dockerfile
+    container_name: dsm-replayer
+    profiles: ["replay"]
+    depends_on:
+      ingestion-gateway:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      DSM_GATEWAY_URL: http://ingestion-gateway:8000
+      DSM_POSTGRES_DSN: postgresql://dsm_user:dsm_pass@postgres:5432/dsm_metadata
+      DSM_CONFIG_DIR: /app/config
+    volumes:
+      - ../data:/app/data:ro
+      - ../config:/app/config:ro
+
 volumes:
   kafka_data:
   postgres_data:

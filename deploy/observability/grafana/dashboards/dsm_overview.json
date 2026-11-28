@@ -1,0 +1,73 @@
+{
+  "title": "DSM LMS — Desempeño y Latencias (C2-C7)",
+  "uid": "dsm-lms-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Throughput de Ingesta (C2 eventos/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(dsm_gateway_events_total{status=\"accepted\"}[1m]))",
+          "legendFormat": "eventos/s aceptados"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latencia E2E: ingested_at -> Perfil MongoDB (p50 / p95 / p99)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(dsm_clustering_ingested_to_profile_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "p50 (ms)"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(dsm_clustering_ingested_to_profile_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "p95 (ms)"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(dsm_clustering_ingested_to_profile_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "p99 (ms)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Latencia E2E: ingested_at -> Grafo DFG Neo4j (p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(dsm_process_mining_ingested_to_graph_latency_seconds_bucket[5m])) by (le, scope)) * 1000",
+          "legendFormat": "p95 {{scope}} (ms)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Vectores, Transiciones y Grafos Persistidos",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(dsm_clustering_vectors_total{status=\"ok\"}) by (granularity)",
+          "legendFormat": "vectores {{granularity}}"
+        },
+        {
+          "expr": "sum(dsm_clustering_transitions_total) by (granularity)",
+          "legendFormat": "transiciones {{granularity}}"
+        },
+        {
+          "expr": "sum(dsm_process_mining_graphs_persisted_total) by (scope)",
+          "legendFormat": "grafos {{scope}}"
+        }
+      ]
+    }
+  ]
+}

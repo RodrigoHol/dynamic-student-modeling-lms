@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -156,6 +156,51 @@ class ClusterAssignmentMessage(BaseModel):
     emitted_at: datetime
 
     @field_validator("window_start", "window_end", "last_event_ingested_at", "emitted_at")
+    @classmethod
+    def _normalize_datetimes(cls, value: datetime) -> datetime:
+        return ensure_utc(value)
+
+
+NodeKind = Literal["activity", "boundary"]
+GraphScope = Literal["student", "cluster"]
+
+
+class DfgNode(BaseModel):
+    code: str = Field(..., min_length=1)
+    label: str = Field(..., min_length=1)
+    kind: NodeKind = "activity"
+    category: str = Field(default="hle", min_length=1)
+
+
+class DfgEdge(BaseModel):
+    source: str = Field(..., min_length=1)
+    target: str = Field(..., min_length=1)
+    source_kind: NodeKind = "activity"
+    target_kind: NodeKind = "activity"
+    freq: int = Field(ge=1)
+    total_time_sec: float = Field(ge=0.0)
+    mean_time_sec: float = Field(ge=0.0)
+    trace_support_count: int = Field(ge=1)
+    support: float = Field(ge=0.0, le=1.0)
+
+
+class DfgGraphDocument(BaseModel):
+    run_id: str = Field(..., min_length=1)
+    course_id: str = Field(..., min_length=1)
+    granularity: str = Field(..., min_length=1)
+    window_id: str = Field(..., min_length=1)
+    window_start: datetime
+    window_end: datetime
+    scope: GraphScope
+    scope_id: str = Field(..., min_length=1)
+    algorithm: str = Field(default="dfg", min_length=1)
+    trace_count: int = Field(ge=0)
+    nodes: list[DfgNode] = Field(default_factory=list)
+    edges: list[DfgEdge] = Field(default_factory=list)
+    ingested_to_graph_ms: int = Field(default=0, ge=0)
+    updated_at: datetime
+
+    @field_validator("window_start", "window_end", "updated_at")
     @classmethod
     def _normalize_datetimes(cls, value: datetime) -> datetime:
         return ensure_utc(value)

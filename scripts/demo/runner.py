@@ -14,13 +14,22 @@ COMPOSE_FILE = REPO_ROOT / "deploy" / "docker-compose.yml"
 SYNTHETIC_DATASET = REPO_ROOT / "data" / "synthetic" / "synthetic_course_5000.jsonl"
 PHASE3_DATASET = REPO_ROOT / "data" / "synthetic" / "phase3_determinism.jsonl"
 PHASE4_DATASET = REPO_ROOT / "data" / "synthetic" / "phase4_clustering.jsonl"
+PHASE5_DATASET = REPO_ROOT / "data" / "synthetic" / "phase5_process_mining.jsonl"
+PHASE6_DATASET = REPO_ROOT / "data" / "synthetic" / "phase6_dashboard.jsonl"
+PHASE7_DATASET = REPO_ROOT / "data" / "synthetic" / "phase7_validation.jsonl"
 PREPROCESSOR_URL = "http://localhost:8004"
 CLUSTERING_URL = "http://localhost:8005"
+PROCESS_MINING_URL = "http://localhost:8006"
+QUERY_API_URL = "http://localhost:8007"
+DASHBOARD_URL = "http://localhost:8088"
+PROMETHEUS_URL = "http://localhost:9091"
+GRAFANA_URL = "http://localhost:3001"
 
 VENV_SCRIPTS = REPO_ROOT / ".venv" / "Scripts"
 PYTEST_BIN = VENV_SCRIPTS / "pytest.exe"
 RUFF_BIN = VENV_SCRIPTS / "ruff.exe"
 REPLAYER_BIN = VENV_SCRIPTS / "dsm-replayer.exe"
+EXPERIMENTS_BIN = VENV_SCRIPTS / "dsm-experiments.exe"
 
 
 def print_header(title: str) -> None:

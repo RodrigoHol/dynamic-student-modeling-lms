@@ -14,6 +14,9 @@ members = [
     "services/replayer",
     "services/preprocessor",
     "services/clustering",
+    "services/process-mining",
+    "services/query-api",
+    "experiments",
 ]
 
 [dependency-groups]
@@ -42,6 +45,9 @@ known-first-party = [
     "dsm_replayer",
     "dsm_preprocessor",
     "dsm_clustering",
+    "dsm_process_mining",
+    "dsm_query_api",
+    "dsm_experiments",
 ]
 
 [tool.pytest.ini_options]
@@ -57,4 +63,7 @@ testpaths = [
     "services/replayer/tests",
     "services/preprocessor/tests",
     "services/clustering/tests",
+    "services/process-mining/tests",
+    "services/query-api/tests",
+    "experiments/tests",
 ]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -32,6 +33,22 @@ class RunRecord(BaseModel):
     events_processed: int = 0
     started_at: datetime
     finished_at: datetime | None = None
+
+
+class ExperimentMetricRecord(BaseModel):
+    metric_id: int | None = None
+    run_id: str
+    granularity: str
+    window_id: str
+    silhouette_score: float | None = None
+    ari_score: float | None = None
+    pm_fitness: float | None = None
+    pm_precision: float | None = None
+    p50_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
+    p99_latency_ms: float | None = None
+    throughput_eps: float | None = None
+    computed_at: datetime | None = None
 
 
 class RunConfigSnapshot(BaseModel):
@@ -102,6 +119,15 @@ class RunRepository(ABC):
 
     @abstractmethod
     async def get_run(self, run_id: str) -> RunRecord | None: ...
+
+    @abstractmethod
+    async def insert_experiment_metrics(
+        self,
+        metrics: Sequence[ExperimentMetricRecord],
+    ) -> int: ...
+
+    @abstractmethod
+    async def list_experiment_metrics(self, run_id: str) -> list[ExperimentMetricRecord]: ...
 
     @abstractmethod
     async def close(self) -> None: ...
@@ -268,6 +294,77 @@ class PostgresRunRepository(RunRepository):
             )
         return self._row_to_record(row) if row is not None else None
 
+    async def insert_experiment_metrics(
+        self,
+        metrics: Sequence[ExperimentMetricRecord],
+    ) -> int:
+        if not metrics:
+            return 0
+        pool = await self._get_pool()
+        rows_payload = [
+            (
+                m.run_id,
+                m.granularity,
+                m.window_id,
+                m.silhouette_score,
+                m.ari_score,
+                m.pm_fitness,
+                m.pm_precision,
+                m.p50_latency_ms,
+                m.p95_latency_ms,
+                m.p99_latency_ms,
+                m.throughput_eps,
+            )
+            for m in metrics
+        ]
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.executemany(
+                """
+                INSERT INTO experiment_metrics (
+                    run_id, granularity, window_id,
+                    silhouette_score, ari_score, pm_fitness, pm_precision,
+                    p50_latency_ms, p95_latency_ms, p99_latency_ms, throughput_eps
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                """,
+                rows_payload,
+            )
+        return len(rows_payload)
+
+    async def list_experiment_metrics(self, run_id: str) -> list[ExperimentMetricRecord]:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT metric_id, run_id, granularity, window_id,
+                       silhouette_score, ari_score, pm_fitness, pm_precision,
+                       p50_latency_ms, p95_latency_ms, p99_latency_ms,
+                       throughput_eps, computed_at
+                FROM experiment_metrics
+                WHERE run_id = $1
+                ORDER BY granularity ASC, window_id ASC, metric_id ASC
+                """,
+                run_id,
+            )
+        return [
+            ExperimentMetricRecord(
+                metric_id=row["metric_id"],
+                run_id=row["run_id"],
+                granularity=row["granularity"],
+                window_id=row["window_id"],
+                silhouette_score=row["silhouette_score"],
+                ari_score=row["ari_score"],
+                pm_fitness=row["pm_fitness"],
+                pm_precision=row["pm_precision"],
+                p50_latency_ms=row["p50_latency_ms"],
+                p95_latency_ms=row["p95_latency_ms"],
+                p99_latency_ms=row["p99_latency_ms"],
+                throughput_eps=row["throughput_eps"],
+                computed_at=row["computed_at"],
+            )
+            for row in rows
+        ]
+
     async def close(self) -> None:
         if self._pool is not None:
             await self._pool.close()
@@ -278,6 +375,7 @@ class InMemoryRunRepository(RunRepository):
     def __init__(self) -> None:
         self.runs: dict[str, RunRecord] = {}
         self.run_configs: dict[str, RunConfigSnapshot] = {}
+        self.experiment_metrics: list[ExperimentMetricRecord] = []
 
     async def start_run(
         self,
@@ -333,6 +431,26 @@ class InMemoryRunRepository(RunRepository):
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         return self.runs.get(run_id)
+
+    async def insert_experiment_metrics(
+        self,
+        metrics: Sequence[ExperimentMetricRecord],
+    ) -> int:
+        now = utc_now()
+        for item in metrics:
+            next_id = len(self.experiment_metrics) + 1
+            self.experiment_metrics.append(
+                item.model_copy(
+                    update={
+                        "metric_id": item.metric_id or next_id,
+                        "computed_at": item.computed_at or now,
+                    }
+                )
+            )
+        return len(metrics)
+
+    async def list_experiment_metrics(self, run_id: str) -> list[ExperimentMetricRecord]:
+        return [m for m in self.experiment_metrics if m.run_id == run_id]
 
     async def close(self) -> None:
         return None

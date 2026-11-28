@@ -17,3 +17,13 @@ scrape_configs:
     metrics_path: "/metrics"
     static_configs:
       - targets: ["clustering:8005"]
+
+  - job_name: "process-mining"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["process-mining:8006"]
+
+  - job_name: "query-api"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["query-api:8007"]

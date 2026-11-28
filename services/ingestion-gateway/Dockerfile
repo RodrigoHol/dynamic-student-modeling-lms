@@ -11,6 +11,9 @@ COPY services/ingestion-gateway/pyproject.toml services/ingestion-gateway/pyproj
 COPY services/replayer/pyproject.toml services/replayer/pyproject.toml
 COPY services/preprocessor/pyproject.toml services/preprocessor/pyproject.toml
 COPY services/clustering/pyproject.toml services/clustering/pyproject.toml
+COPY services/process-mining/pyproject.toml services/process-mining/pyproject.toml
+COPY services/query-api/pyproject.toml services/query-api/pyproject.toml
+COPY experiments/pyproject.toml experiments/pyproject.toml
 
 RUN uv sync --frozen --package dsm-ingestion-gateway --no-install-workspace --no-dev
 

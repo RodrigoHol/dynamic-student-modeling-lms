@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from dsm_common.storage import InMemoryRunRepository, load_run_config_snapshot
+from dsm_common.storage import (
+    ExperimentMetricRecord,
+    InMemoryRunRepository,
+    load_run_config_snapshot,
+)
 
 
 def test_load_run_config_snapshot_reads_all_five_yamls() -> None:
@@ -84,3 +88,36 @@ async def test_in_memory_run_repository_errors() -> None:
         await repo.complete_run("missing_run", events_processed=1)
     with pytest.raises(KeyError):
         await repo.fail_run("missing_run", events_processed=1)
+
+
+@pytest.mark.asyncio
+async def test_in_memory_run_repository_experiment_metrics() -> None:
+    repo = InMemoryRunRepository()
+    await repo.start_run(
+        run_id="run_metrics_1",
+        mode="batch",
+        source_dataset="sample.jsonl",
+        speed_factor=None,
+    )
+    inserted = await repo.insert_experiment_metrics(
+        [
+            ExperimentMetricRecord(
+                run_id="run_metrics_1",
+                granularity="weekly",
+                window_id="2024-W36",
+                silhouette_score=0.61,
+                ari_score=0.78,
+                pm_fitness=0.92,
+                pm_precision=0.84,
+                p50_latency_ms=14.2,
+                p95_latency_ms=28.5,
+                p99_latency_ms=35.0,
+                throughput_eps=420.5,
+            )
+        ]
+    )
+    assert inserted == 1
+    listed = await repo.list_experiment_metrics("run_metrics_1")
+    assert len(listed) == 1
+    assert listed[0].silhouette_score == pytest.approx(0.61)
+    assert listed[0].ari_score == pytest.approx(0.78)

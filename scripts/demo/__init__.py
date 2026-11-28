@@ -2,11 +2,20 @@ from demo.phase1 import verify_phase1
 from demo.phase2 import verify_phase2
 from demo.phase3 import verify_phase3
 from demo.phase4 import verify_phase4
+from demo.phase5 import verify_phase5
+from demo.phase6 import verify_phase6
+from demo.phase7 import verify_phase7
 from demo.runner import (
     CLUSTERING_URL,
     COMPOSE_FILE,
+    DASHBOARD_URL,
+    EXPERIMENTS_BIN,
+    GRAFANA_URL,
     PREPROCESSOR_URL,
+    PROCESS_MINING_URL,
+    PROMETHEUS_URL,
     PYTEST_BIN,
+    QUERY_API_URL,
     REPLAYER_BIN,
     REPO_ROOT,
     RUFF_BIN,
@@ -19,8 +28,14 @@ from demo.runner import (
 __all__ = [
     "CLUSTERING_URL",
     "COMPOSE_FILE",
+    "DASHBOARD_URL",
+    "EXPERIMENTS_BIN",
+    "GRAFANA_URL",
     "PREPROCESSOR_URL",
+    "PROCESS_MINING_URL",
+    "PROMETHEUS_URL",
     "PYTEST_BIN",
+    "QUERY_API_URL",
     "REPLAYER_BIN",
     "REPO_ROOT",
     "RUFF_BIN",
@@ -32,4 +47,7 @@ __all__ = [
     "verify_phase2",
     "verify_phase3",
     "verify_phase4",
+    "verify_phase5",
+    "verify_phase6",
+    "verify_phase7",
 ]

@@ -1,0 +1,25 @@
+[project]
+name = "dsm-query-api"
+version = "0.1.0"
+description = "Servicio C7: Query API REST y WebSocket sobre MongoDB, Neo4j y PostgreSQL"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "dsm-common[kafka,mongo,neo4j,postgres,observability]",
+    "fastapi>=0.115.0",
+    "pyjwt>=2.9.0",
+    "uvicorn[standard]>=0.30.0",
+    "websockets>=12.0",
+]
+
+[project.scripts]
+dsm-query-api = "dsm_query_api.main:main"
+
+[tool.uv.sources]
+dsm-common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dsm_query_api"]

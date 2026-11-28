@@ -9,6 +9,7 @@ dependencies = [
 
 [project.optional-dependencies]
 clustering = ["river>=0.21.0"]
+process-mining = ["pm4py>=2.7.11"]
 
 [tool.uv.sources]
 dsm-common = { workspace = true }
